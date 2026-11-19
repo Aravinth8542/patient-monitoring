@@ -2,7 +2,7 @@ from enum import Enum
 from datetime import datetime
 from typing import Annotated, Literal, Any
 from decimal import Decimal
-from pydantic import BaseModel, Field, ConfigDict, TypeAdapter
+from pydantic import BaseModel, Field, ConfigDict, TypeAdapter, AwareDatetime, model_validator
 
 
 class ObservationType(str, Enum):
@@ -18,13 +18,13 @@ class ObservationType(str, Enum):
 class ObservationInput(BaseModel):
     client_obs_id: str = Field(min_length=1, max_length=150)
     type: ObservationType
-    effective_at: datetime
+    effective_at: AwareDatetime
 
 class HeartRateInput(ObservationInput):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal[ObservationType.HEART_RATE]
-    value: Decimal
+    value: Decimal = Field(gt=0, le=300, allow_inf_nan=False)
     unit: Literal["/min"]
 
 
@@ -32,9 +32,18 @@ class BloodPressureInput(ObservationInput):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal[ObservationType.BLOOD_PRESSURE]
-    systolic: Decimal
-    diastolic: Decimal
+    systolic: Decimal = Field(gt=0, le=300, allow_inf_nan=False)
+    diastolic: Decimal = Field(gt=0, le=250, allow_inf_nan=False)
     unit: Literal["mm[Hg]"]
+
+    @model_validator(mode="after")
+    def validate_pressure(self):
+        if self.systolic <= self.diastolic:
+            raise ValueError(
+                "Systolic pressure must be greater than diastolic pressure"
+            )
+
+        return self
 
 
 class MedicationTakenInput(ObservationInput):
@@ -48,7 +57,7 @@ class SpO2Input(ObservationInput):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal[ObservationType.SPO2]
-    value: Decimal
+    value: Decimal = Field(ge=0, le=100, allow_inf_nan=False)
     unit: Literal["%", "1"]
 
 
@@ -81,5 +90,5 @@ class BatchInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     batch_id: str = Field(min_length=1, max_length=150)
-    sent_at_device: datetime
+    sent_at_device: AwareDatetime
     observations: list[Any] = Field(min_length=1)

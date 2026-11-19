@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from app.routers.ingestion import router as ingestion_router
 
 app = FastAPI(
     title="Patient Monitoring API",
@@ -6,6 +7,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
+app.include_router(ingestion_router)
 
 @app.get("/health")
 def health_check():
