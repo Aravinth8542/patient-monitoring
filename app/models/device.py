@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKeyConstraint
+from sqlalchemy import ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,6 +15,12 @@ class Device(Base):
             ["tenant_id", "patient_id"],
             ["patients.tenant_id", "patients.id"],
             name="fk_device_patient_tenant",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "patient_id",
+            "id",
+            name="uq_device_tenant_patient_id",
         ),
     )
 
