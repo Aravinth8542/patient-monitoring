@@ -19,6 +19,7 @@ from app.models.patient import Patient
 from app.models.ingestion_request import IngestionRequest
 from app.schemas.observation import BatchInput, ObservationPayload
 from app.services.observation_service import process_observation
+from app.services.clock_skew import estimate_device_offset
 from app.services.normalization import normalize_spo2, normalize_temperature
 from app.schemas.observation import SpO2Input, BodyTempInput
 
@@ -52,6 +53,8 @@ def ingest_observations(
     idempotency_key: str = Header(min_length=1, max_length=200, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
 ):
+    # Capture once, before database lookups, for the entire batch.
+    received_at = datetime.now(timezone.utc)
     # Authentication, authorization, and RLS must be added before deployment.
     device = db.get(Device, device_id)
     if device is None:
@@ -63,7 +66,7 @@ def ingest_observations(
         raise HTTPException(status_code=403, detail="consent_inactive")
 
     fingerprint = request_fingerprint(batch)
-    received_at = datetime.now(timezone.utc)
+    device_offset = estimate_device_offset(received_at, batch.sent_at_device)
     # Serialize competing requests using the same device/key until commit.
     lock_idempotency_key(db, device_id, idempotency_key)
     previous = db.execute(select(IngestionRequest).where(
@@ -86,7 +89,7 @@ def ingest_observations(
                 normalize_temperature(observation.value, observation.unit)
             status = process_observation(
                 db, observation, device.tenant_id, device.patient_id, device.id,
-                received_at=received_at,
+                received_at=received_at, device_offset=device_offset,
             )
             item = {"index": index, "client_obs_id": observation.client_obs_id,
                     "status": "rejected" if status == "conflicting_duplicate" else status}

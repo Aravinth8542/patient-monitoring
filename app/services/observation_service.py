@@ -1,5 +1,5 @@
 """Observation persistence and safe device-scoped duplicate classification."""
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -14,6 +14,7 @@ from app.schemas.observation import (
     BodyTempInput, SymptomScoreInput, MedicationTakenInput,
 )
 from app.services.normalization import normalize_spo2, normalize_temperature
+from app.services.clock_skew import resolve_effective_at
 
 observation_adapter = TypeAdapter(ObservationPayload)
 DUPLICATE_CONSTRAINT = "uq_observation_device_client_id"
@@ -51,17 +52,20 @@ def is_identical_heart_rate(existing: Observation, incoming: HeartRateInput) -> 
 def save_observation(
     db: Session, observation: ObservationPayload, tenant_id: UUID,
     patient_id: UUID, device_id: UUID, *, received_at: datetime | None = None,
+    device_offset: timedelta = timedelta(0),
 ) -> Observation:
     """Flush one observation; caller owns the transaction."""
     recorded_at = received_at or datetime.now(timezone.utc)
-    effective_at = observation.effective_at.astimezone(timezone.utc)
-    skew = int((recorded_at - effective_at).total_seconds())
+    effective_at, skew_flagged = resolve_effective_at(
+        observation.effective_at, recorded_at, device_offset
+    )
+    skew = int(device_offset.total_seconds())
     row = Observation(
         tenant_id=tenant_id, patient_id=patient_id, device_id=device_id,
         client_obs_id=observation.client_obs_id, type=observation.type.value,
         original_effective_at=observation.effective_at, effective_at=effective_at,
         received_at=recorded_at, original_payload=observation.model_dump(mode="json"),
-        clock_skew_flagged=(skew < -300 or skew > 72 * 3600),
+        clock_skew_flagged=skew_flagged,
         clock_skew_seconds=skew,
     )
     if isinstance(observation, HeartRateInput):
@@ -98,13 +102,14 @@ def save_heart_rate(db: Session, observation: HeartRateInput, tenant_id, patient
 def process_observation(
     db: Session, observation: ObservationPayload, tenant_id: UUID,
     patient_id: UUID, device_id: UUID, *, received_at: datetime | None = None,
+    device_offset: timedelta = timedelta(0),
 ) -> str:
     existing = find_existing_observation(db, device_id, observation.client_obs_id)
     if existing is not None:
         return "duplicate" if is_identical_observation(existing, observation) else "conflicting_duplicate"
     try:
         with db.begin_nested():
-            save_observation(db, observation, tenant_id, patient_id, device_id, received_at=received_at)
+            save_observation(db, observation, tenant_id, patient_id, device_id, received_at=received_at, device_offset=device_offset)
         return "accepted"
     except IntegrityError as exc:
         original = exc.orig
