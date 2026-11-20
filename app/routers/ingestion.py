@@ -10,7 +10,8 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.clock import get_current_time
-from app.database import get_db
+from app.database import get_db, get_runtime_db
+from app.security.tenant_context import require_device_context
 from app.models.device import Device
 from app.models.patient import Patient
 from app.models.ingestion_request import IngestionRequest
@@ -49,11 +50,14 @@ def ingest_observations(
     device_id: UUID,
     batch: BatchInput,
     idempotency_key: str = Header(min_length=1, max_length=200, alias="Idempotency-Key"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_runtime_db),
     received_at: datetime = Depends(get_current_time),
     authorization: str | None = Header(default=None, alias="Authorization"),
+    _tenant: UUID = Depends(require_device_context),
 ):
     # Capture once, before database lookups, for the entire batch.
+    # Database authenticates token and establishes an unforgeable tenant context
+    # before any table read. RLS stays active for the rest of the transaction.
     device = authenticate_device(db, db.get(Device, device_id), authorization)
     patient = db.get(Patient, device.patient_id)
     if patient is None or patient.tenant_id != device.tenant_id:

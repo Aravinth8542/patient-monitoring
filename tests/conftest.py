@@ -6,7 +6,8 @@ from sqlalchemy.engine import make_url
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.database import get_db
+from app.database import get_db, get_runtime_db
+from app.security.tenant_context import require_device_context, get_runtime_db
 from app.config import settings
 
 
@@ -50,9 +51,15 @@ def api_client(db_session):
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_runtime_db] = override_get_db
+    app.dependency_overrides[require_device_context] = lambda: None
+    app.dependency_overrides[get_runtime_db] = override_get_db
 
     try:
         with TestClient(app) as client:
             yield client
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_runtime_db, None)
+        app.dependency_overrides.pop(require_device_context, None)
+        app.dependency_overrides.pop(get_runtime_db, None)
