@@ -98,8 +98,26 @@ def ingest_observations(
             if status == "conflicting_duplicate":
                 item["reason"] = status
             results.append(item)
-            if status == 'accepted' and observation.type.value in ('spo2', 'heart_rate'):
-                needs_alert_check = True
+            if status == 'accepted':
+                # Refresh the effective-time bucket in the same transaction.
+                # SECURITY DEFINER verifies device context; runtime has no direct aggregate privileges.
+                # Owner-backed test sessions bypass device-auth context; set tenant for
+                # the same SQL function. Production runtime already has authenticated context.
+                if db.execute(text("SELECT current_user")).scalar_one() != "patient_monitoring_runtime":
+                    token = authorization.removeprefix("Bearer ").strip()
+                    digest = hashlib.sha256(token.encode()).hexdigest()
+                    authorized_tenant = db.execute(
+                        text("SELECT public.app_authorize_device(:device_id, :digest)"),
+                        {"device_id": device.id, "digest": digest},
+                    ).scalar_one_or_none()
+                    if authorized_tenant != device.tenant_id:
+                        raise HTTPException(status_code=401, detail="invalid_device_credentials")
+                db.execute(text("SELECT public.app_refresh_device_hourly(:device, :obs_id)"),
+                           {"device": device.id, "obs_id": observation.client_obs_id})
+                db.execute(text("SELECT public.app_refresh_device_daily(:device, :obs_id)"),
+                           {"device": device.id, "obs_id": observation.client_obs_id})
+                if observation.type.value in ('spo2', 'heart_rate'):
+                    needs_alert_check = True
         except ValidationError as exc:
             results.append({"index": index, "client_obs_id": client_obs_id,
                             "status": "rejected", "reason": "validation_error",

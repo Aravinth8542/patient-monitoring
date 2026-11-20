@@ -6,3 +6,7 @@ from app.models.ingestion_request import IngestionRequest
 from app.models.staff import StaffUser, CareTeamMembership
 
 from app.models.alert import Alert
+
+from app.models.hourly_aggregate import HourlyAggregate
+
+from app.models.daily_aggregate import DailyAggregate
