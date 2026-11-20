@@ -2,6 +2,7 @@ from datetime import datetime
 from fastapi import FastAPI, Depends
 from app.clock import get_current_time
 from app.routers.ingestion import router as ingestion_router
+from app.routers.staff import router as staff_router
 
 app = FastAPI(
     title="Patient Monitoring API",
@@ -10,6 +11,7 @@ app = FastAPI(
 )
 
 app.include_router(ingestion_router)
+app.include_router(staff_router)
 
 @app.get("/health")
 def health_check(_now: datetime = Depends(get_current_time)):
