@@ -6,6 +6,8 @@ from app.routers.staff import router as staff_router
 from app.routers.patients import router as patients_router
 from app.routers.audit import router as audit_router
 
+from app.routers.alerts import router as alerts_router
+
 app = FastAPI(
     title="Patient Monitoring API",
     description="Backend API for remote patient monitoring",
@@ -16,6 +18,7 @@ app.include_router(ingestion_router)
 app.include_router(staff_router)
 app.include_router(patients_router)
 app.include_router(audit_router)
+app.include_router(alerts_router)
 
 @app.get("/health")
 def health_check(_now: datetime = Depends(get_current_time)):

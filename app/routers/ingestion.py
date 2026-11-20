@@ -18,6 +18,7 @@ from app.models.ingestion_request import IngestionRequest
 from app.schemas.observation import BatchInput, ObservationPayload
 from app.services.observation_service import process_observation
 from app.services.clock_skew import estimate_device_offset
+from app.services.alert_engine import evaluate_patient_alerts
 from app.services.device_auth import authenticate_device
 from app.services.normalization import normalize_spo2, normalize_temperature
 from app.schemas.observation import SpO2Input, BodyTempInput
@@ -79,6 +80,7 @@ def ingest_observations(
         return previous.response_body
 
     results = []
+    needs_alert_check = False
     for index, raw in enumerate(batch.observations):
         client_obs_id = raw.get("client_obs_id") if isinstance(raw, dict) else None
         try:
@@ -96,6 +98,8 @@ def ingest_observations(
             if status == "conflicting_duplicate":
                 item["reason"] = status
             results.append(item)
+            if status == 'accepted' and observation.type.value in ('spo2', 'heart_rate'):
+                needs_alert_check = True
         except ValidationError as exc:
             results.append({"index": index, "client_obs_id": client_obs_id,
                             "status": "rejected", "reason": "validation_error",
@@ -111,5 +115,10 @@ def ingest_observations(
         request_hash=fingerprint, response_body=response, status_code=200,
         created_at=received_at,
     ))
+    # Evaluate after accepted readings are flushed, in the same transaction.
+    # Any alert-write failure rolls back the batch rather than silently losing alerts.
+    if needs_alert_check:
+        evaluate_patient_alerts(db, device.tenant_id, device.patient_id,
+                                received_at, device_context=(db.execute(text("SELECT current_user")).scalar_one() == "patient_monitoring_runtime"))
     db.commit()
     return response
