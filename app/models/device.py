@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKeyConstraint, UniqueConstraint
+from sqlalchemy import ForeignKeyConstraint, UniqueConstraint, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,3 +39,5 @@ class Device(Base):
         UUID(as_uuid=True),
         nullable=False,
     )
+    # SHA-256 digest of a high-entropy random device bearer token. Never store plaintext.
+    token_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)

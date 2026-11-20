@@ -5,6 +5,7 @@ from app.models.tenant import Tenant
 from app.models.patient import Patient
 from app.models.device import Device
 from app.models.observation import Observation
+from app.services.device_auth import hash_device_token
 
 
 def seed_device(db_session):
@@ -14,7 +15,7 @@ def seed_device(db_session):
     patient = Patient(id=uuid4(), tenant_id=tenant.id, external_id="ingestion-patient")
     db_session.add(patient)
     db_session.flush()
-    device = Device(id=UUID("11111111-1111-4111-8111-111111111111"), tenant_id=tenant.id, patient_id=patient.id)
+    device = Device(id=UUID("11111111-1111-4111-8111-111111111111"), tenant_id=tenant.id, patient_id=patient.id, token_hash=hash_device_token("test-device-secret"))
     db_session.add(device)
     db_session.flush()
     return device
@@ -25,7 +26,7 @@ def test_batch_partial_success(api_client, db_session):
     seed_device(db_session)
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
-        headers={"Idempotency-Key": "test-001"},
+        headers={"Authorization": "Bearer test-device-secret", "Idempotency-Key": "test-001"},
         json={
             "batch_id": "batch-001",
             "sent_at_device": "2026-11-19T10:15:00+05:30",
@@ -61,7 +62,7 @@ def test_batch_with_malformed_items(api_client, db_session):
     seed_device(db_session)
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
-        headers={"Idempotency-Key": "test-002"},
+        headers={"Authorization": "Bearer test-device-secret", "Idempotency-Key": "test-002"},
         json={
             "batch_id": "batch-002",
             "sent_at_device": "2026-11-19T10:15:00+05:30",
@@ -96,7 +97,7 @@ def test_observation_without_timezone_is_rejected(api_client, db_session):
     seed_device(db_session)
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
-        headers={"Idempotency-Key": "test-003"},
+        headers={"Authorization": "Bearer test-device-secret", "Idempotency-Key": "test-003"},
         json={
             "batch_id": "batch-003",
             "sent_at_device": "2026-11-19T10:15:00+05:30",
@@ -131,7 +132,7 @@ def test_negative_heart_rate_is_rejected(api_client, db_session):
     seed_device(db_session)
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
-        headers={"Idempotency-Key": "test-004"},
+        headers={"Authorization": "Bearer test-device-secret", "Idempotency-Key": "test-004"},
         json={
             "batch_id": "batch-004",
             "sent_at_device": "2026-11-19T10:15:00+05:30",
@@ -155,7 +156,7 @@ def test_invalid_spo2_fraction_does_not_reject_batch(api_client, db_session):
     seed_device(db_session)
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
-        headers={"Idempotency-Key": "test-005"},
+        headers={"Authorization": "Bearer test-device-secret", "Idempotency-Key": "test-005"},
         json={
             "batch_id": "batch-005",
             "sent_at_device": "2026-11-19T10:15:00+05:30",
@@ -191,7 +192,7 @@ def test_invalid_blood_pressure_is_rejected(api_client, db_session):
     seed_device(db_session)
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
-        headers={"Idempotency-Key": "test-006"},
+        headers={"Authorization": "Bearer test-device-secret", "Idempotency-Key": "test-006"},
         json={
             "batch_id": "batch-006",
             "sent_at_device": "2026-11-19T10:15:00+05:30",
@@ -236,7 +237,7 @@ def test_persist_all_types_and_idempotent_replay(api_client, db_session):
         {"client_obs_id": "med", "type": "medication_taken", "medication_ref": "rx-123", "effective_at": now},
     ]
     batch = {"batch_id": "all-types", "sent_at_device": now, "observations": observations}
-    headers = {"Idempotency-Key": "key-all-types"}
+    headers = {"Authorization": "Bearer test-device-secret", "Idempotency-Key": "key-all-types"}
     first = api_client.post(endpoint, json=batch, headers=headers)
     assert first.status_code == 200, first.text
     assert [x["status"] for x in first.json()["results"]] == ["accepted"] * 6
@@ -257,11 +258,11 @@ def test_persist_all_types_and_idempotent_replay(api_client, db_session):
     conflict = api_client.post(endpoint, json=conflicting_request, headers=headers)
     assert conflict.status_code == 409
 
-    duplicate = api_client.post(endpoint, json=batch, headers={"Idempotency-Key": "another-key"})
+    duplicate = api_client.post(endpoint, json=batch, headers={"Authorization": "Bearer test-device-secret", "Idempotency-Key": "another-key"})
     assert [x["status"] for x in duplicate.json()["results"]] == ["duplicate"] * 6
 
     changed = {**batch, "observations": [{**observations[0], "value": 99}]}
-    changed_response = api_client.post(endpoint, json=changed, headers={"Idempotency-Key": "third-key"})
+    changed_response = api_client.post(endpoint, json=changed, headers={"Authorization": "Bearer test-device-secret", "Idempotency-Key": "third-key"})
     assert changed_response.json()["results"][0]["reason"] == "conflicting_duplicate"
     assert len(db_session.execute(select(Observation).where(Observation.device_id == device.id)).scalars().all()) == 6
 
@@ -269,7 +270,7 @@ def test_persist_all_types_and_idempotent_replay(api_client, db_session):
 def test_unknown_device_is_not_accepted(api_client):
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
-        headers={"Idempotency-Key": "unknown"},
+        headers={"Authorization": "Bearer test-device-secret", "Idempotency-Key": "unknown"},
         json={"batch_id": "b", "sent_at_device": "2026-11-19T10:00:00Z", "observations": ["bad"]},
     )
-    assert response.status_code == 404
+    assert response.status_code == 401

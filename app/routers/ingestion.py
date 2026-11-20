@@ -1,11 +1,7 @@
-"""Batch ingestion with partial success and transactional request idempotency.
-
-SECURITY: Device authentication is not implemented in this milestone. Do not
-expose this route outside a trusted development environment.
-"""
+"""Batch ingestion with device authentication and request idempotency."""
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -13,6 +9,7 @@ from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
+from app.clock import get_current_time
 from app.database import get_db
 from app.models.device import Device
 from app.models.patient import Patient
@@ -20,6 +17,7 @@ from app.models.ingestion_request import IngestionRequest
 from app.schemas.observation import BatchInput, ObservationPayload
 from app.services.observation_service import process_observation
 from app.services.clock_skew import estimate_device_offset
+from app.services.device_auth import authenticate_device
 from app.services.normalization import normalize_spo2, normalize_temperature
 from app.schemas.observation import SpO2Input, BodyTempInput
 
@@ -52,13 +50,11 @@ def ingest_observations(
     batch: BatchInput,
     idempotency_key: str = Header(min_length=1, max_length=200, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
+    received_at: datetime = Depends(get_current_time),
+    authorization: str | None = Header(default=None, alias="Authorization"),
 ):
     # Capture once, before database lookups, for the entire batch.
-    received_at = datetime.now(timezone.utc)
-    # Authentication, authorization, and RLS must be added before deployment.
-    device = db.get(Device, device_id)
-    if device is None:
-        raise HTTPException(status_code=404, detail="device_not_found")
+    device = authenticate_device(db, db.get(Device, device_id), authorization)
     patient = db.get(Patient, device.patient_id)
     if patient is None or patient.tenant_id != device.tenant_id:
         raise HTTPException(status_code=404, detail="patient_not_found")
