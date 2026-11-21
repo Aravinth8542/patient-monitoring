@@ -1,8 +1,9 @@
 """Batch ingestion with device authentication and request idempotency."""
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
+from collections import defaultdict
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import TypeAdapter, ValidationError
@@ -22,6 +23,7 @@ from app.services.alert_engine import evaluate_patient_alerts
 from app.services.device_auth import authenticate_device
 from app.services.normalization import normalize_spo2, normalize_temperature
 from app.schemas.observation import SpO2Input, BodyTempInput
+from app.models.observation import Observation
 
 router = APIRouter(prefix="/v1/devices", tags=["Ingestion"])
 observation_adapter = TypeAdapter(ObservationPayload)
@@ -81,6 +83,7 @@ def ingest_observations(
 
     results = []
     needs_alert_check = False
+    accepted_ids = []
     for index, raw in enumerate(batch.observations):
         client_obs_id = raw.get("client_obs_id") if isinstance(raw, dict) else None
         try:
@@ -98,25 +101,10 @@ def ingest_observations(
             if status == "conflicting_duplicate":
                 item["reason"] = status
             results.append(item)
-            if status == 'accepted':
-                # Refresh the effective-time bucket in the same transaction.
-                # SECURITY DEFINER verifies device context; runtime has no direct aggregate privileges.
-                # Owner-backed test sessions bypass device-auth context; set tenant for
-                # the same SQL function. Production runtime already has authenticated context.
-                if db.execute(text("SELECT current_user")).scalar_one() != "patient_monitoring_runtime":
-                    token = authorization.removeprefix("Bearer ").strip()
-                    digest = hashlib.sha256(token.encode()).hexdigest()
-                    authorized_tenant = db.execute(
-                        text("SELECT public.app_authorize_device(:device_id, :digest)"),
-                        {"device_id": device.id, "digest": digest},
-                    ).scalar_one_or_none()
-                    if authorized_tenant != device.tenant_id:
-                        raise HTTPException(status_code=401, detail="invalid_device_credentials")
-                db.execute(text("SELECT public.app_refresh_device_hourly(:device, :obs_id)"),
-                           {"device": device.id, "obs_id": observation.client_obs_id})
-                db.execute(text("SELECT public.app_refresh_device_daily(:device, :obs_id)"),
-                           {"device": device.id, "obs_id": observation.client_obs_id})
-                if observation.type.value in ('spo2', 'heart_rate'):
+            if status == "accepted":
+                accepted_ids.append(observation.client_obs_id)
+
+                if observation.type.value in ("spo2", "heart_rate"):
                     needs_alert_check = True
         except ValidationError as exc:
             results.append({"index": index, "client_obs_id": client_obs_id,
@@ -127,6 +115,68 @@ def ingest_observations(
                             "status": "rejected", "reason": "invalid_value",
                             "errors": [{"field": "value", "message": str(exc), "type": "value_error"}]})
 
+    if accepted_ids:
+        # Ensure accepted observations are available to aggregate queries.
+        db.flush()
+
+        # The effective timestamp must come from the persisted observation,
+        # because process_observation may correct the device's clock skew.
+        accepted_rows = db.execute(
+            select(
+                Observation.client_obs_id,
+                Observation.type,
+                Observation.effective_at,
+            ).where(
+                Observation.device_id == device.id,
+                Observation.client_obs_id.in_(accepted_ids),
+            )
+        ).all()
+
+        hourly_buckets = {}
+        daily_buckets = {}
+
+        for obs_id, metric, effective_at in accepted_rows:
+            effective_utc = effective_at.astimezone(timezone.utc)
+
+            hour = effective_utc.replace(
+                minute=0, second=0, microsecond=0
+            )
+            day = effective_utc.replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+
+            hourly_buckets.setdefault((metric, hour), obs_id)
+            daily_buckets.setdefault((metric, day), obs_id)
+
+        # Owner-backed test sessions need the same device authorization context.
+        # Production runtime connections already have authenticated context.
+        if db.execute(text("SELECT current_user")).scalar_one() != "patient_monitoring_runtime":
+            token = (authorization or "").removeprefix("Bearer ").strip()
+            digest = hashlib.sha256(token.encode()).hexdigest()
+
+            authorized_tenant = db.execute(
+                text("SELECT public.app_authorize_device(:device_id, :digest)"),
+                {"device_id": device.id, "digest": digest},
+            ).scalar_one_or_none()
+
+            if authorized_tenant != device.tenant_id:
+                raise HTTPException(
+                    status_code=401,
+                    detail="invalid_device_credentials",
+                )
+
+        # Stable ordering reduces avoidable lock-order inversions.
+        for bucket in sorted(hourly_buckets):
+            db.execute(
+                text("SELECT public.app_refresh_device_hourly(:device, :obs_id)"),
+                {"device": device.id, "obs_id": hourly_buckets[bucket]},
+            )
+
+        for bucket in sorted(daily_buckets):
+            db.execute(
+                text("SELECT public.app_refresh_device_daily(:device, :obs_id)"),
+                {"device": device.id, "obs_id": daily_buckets[bucket]},
+            )
     response = {"batch_id": batch.batch_id, "results": results}
     db.add(IngestionRequest(
         device_id=device_id, idempotency_key=idempotency_key,
