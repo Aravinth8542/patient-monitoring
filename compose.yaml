@@ -32,6 +32,21 @@ services:
       - -m
       - scripts.run_container_migrations
 
+  seed:
+    build: .
+    restart: "no"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      TEST_MODE: "0"
+    command:
+      - python
+      - -c
+      - "import os; from scripts.run_container_api import docker_database_url; os.environ['DATABASE_URL'] = docker_database_url('DATABASE_URL'); from scripts.seed_dev import main; main()"
+
   api:
     build: .
     restart: unless-stopped
@@ -39,6 +54,8 @@ services:
       db:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      seed:
         condition: service_completed_successfully
     env_file:
       - .env

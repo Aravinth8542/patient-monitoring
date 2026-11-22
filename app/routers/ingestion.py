@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -52,15 +52,17 @@ def validation_errors(exc: ValidationError) -> list[dict]:
 def ingest_observations(
     device_id: UUID,
     batch: BatchInput,
+    request: Request,
     idempotency_key: str = Header(min_length=1, max_length=200, alias="Idempotency-Key"),
     db: Session = Depends(get_runtime_db),
     received_at: datetime = Depends(get_current_time),
-    authorization: str | None = Header(default=None, alias="Authorization"),
+
     _tenant: UUID = Depends(require_device_context),
 ):
     # Capture once, before database lookups, for the entire batch.
     # Database authenticates token and establishes an unforgeable tenant context
     # before any table read. RLS stays active for the rest of the transaction.
+    authorization = request.headers.get("Authorization")
     device = authenticate_device(db, db.get(Device, device_id), authorization)
     patient = db.get(Patient, device.patient_id)
     if patient is None or patient.tenant_id != device.tenant_id:

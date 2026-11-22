@@ -13,6 +13,8 @@ from app.models.tenant import Tenant
 from app.models.patient import Patient
 from app.models.device import Device
 from app.models.observation import Observation
+from app.models.staff import StaffUser, CareTeamMembership
+from app.services.staff_auth import new_staff_token, hash_staff_token
 from app.services.device_auth import generate_device_token, hash_device_token
 
 NAMESPACE = uuid.UUID('ab632718-1849-4a4c-910e-73272baf94f1')
@@ -33,16 +35,21 @@ def main():
     assert_dev_database()
     now = datetime.now(timezone.utc).replace(microsecond=0)
     issued_tokens = []
-    created = {'tenants': 0, 'patients': 0, 'devices': 0, 'observations': 0}
+    created = {'tenants': 0, 'patients': 0, 'devices': 0, 'observations': 0, 'clinicians': 0, 'care_team_memberships': 0}
+    issued_staff_tokens = []
     hospitals = [
         ('north', 'North Demo Hospital', [
-            ('NORTH-001', 'Asia/Kolkata', True),
-            ('NORTH-002', 'Asia/Kolkata', True),
+            (f'NORTH-{n:03d}', 'Asia/Kolkata', True) for n in range(1, 11)
         ]),
         ('south', 'South Demo Clinic', [
-            ('SOUTH-001', 'Asia/Kolkata', True),
-            ('SOUTH-002', 'Asia/Kolkata', True),
+            (f'SOUTH-{n:03d}', 'Asia/Kolkata', True) for n in range(1, 11)
         ]),
+    ]
+    # Three demo clinicians across the two seeded tenants.
+    clinicians = [
+        ('north', 'north-clinician-1'),
+        ('north', 'north-clinician-2'),
+        ('south', 'south-clinician-1'),
     ]
     with SessionLocal.begin() as db:
         for tenant_key, tenant_name, patients in hospitals:
@@ -95,14 +102,43 @@ def main():
                         clock_skew_seconds=0, original_payload=original,
                     ))
                     created['observations'] += 1
+        # Stable IDs make repeat runs safe; existing credentials remain unchanged.
+        for tenant_key, clinician_key in clinicians:
+            tenant_id = stable_id('tenant', tenant_key)
+            staff_id = stable_id('clinician', clinician_key)
+            if db.get(StaffUser, staff_id) is None:
+                token = new_staff_token()
+                db.add(StaffUser(id=staff_id, tenant_id=tenant_id,
+                                 role='clinician', token_hash=hash_staff_token(token)))
+                issued_staff_tokens.append((clinician_key, str(staff_id), token))
+                created['clinicians'] += 1
         db.flush()
-    print('Development seed complete:', ', '.join(f'{k}={v}' for k, v in created.items()))
+        for tenant_key, _tenant_name, patients in hospitals:
+            for index, (external_id, _tz, _consent) in enumerate(patients):
+                clinician_key = (('north-clinician-1' if index % 2 == 0 else 'north-clinician-2')
+                                 if tenant_key == 'north' else 'south-clinician-1')
+                staff_id = stable_id('clinician', clinician_key)
+                patient_id = stable_id('patient', external_id)
+                membership_id = stable_id('care-team-membership', f'{clinician_key}:{external_id}')
+                if db.get(CareTeamMembership, membership_id) is None:
+                    db.add(CareTeamMembership(id=membership_id,
+                                              tenant_id=stable_id('tenant', tenant_key),
+                                              staff_id=staff_id, patient_id=patient_id))
+                    created['care_team_memberships'] += 1
+        db.flush()
+    print('Development seed complete:' , ', '.join(f'{k}={v}' for k, v in created.items()))
     if issued_tokens:
         print('\nNEW DEVICE TOKENS (shown once; save securely; never commit):')
         for patient, device_id, token in issued_tokens:
             print(f'{patient} | device_id={device_id} | bearer_token={token}')
     else:
         print('No new device tokens generated; existing credentials unchanged.')
+    if issued_staff_tokens:
+        print('\nNEW CLINICIAN TOKENS (shown once; save securely; never commit):')
+        for clinician_key, staff_id, token in issued_staff_tokens:
+            print(f'{clinician_key} | staff_id={staff_id} | bearer_token={token}')
+    else:
+        print('No new clinician tokens generated; existing credentials unchanged.')
 
 if __name__ == '__main__':
     main()
