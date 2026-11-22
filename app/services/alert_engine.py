@@ -13,7 +13,9 @@ from app.models.observation import Observation
 from app.models.patient import Patient
 from app.models.tenant import Tenant
 from app.services.alert_rules import Reading, detect_episodes, rules_for
+from datetime import timedelta
 
+lookback = timedelta(days=31)
 
 def evaluate_patient_alerts(db: Session, tenant_id: UUID, patient_id: UUID, now, *, device_context: bool = False) -> int:
     """Insert newly detected episodes; return number inserted (idempotent)."""
@@ -32,6 +34,7 @@ def evaluate_patient_alerts(db: Session, tenant_id: UUID, patient_id: UUID, now,
                Observation.patient_id == patient_id,
                Observation.type.in_(metrics),
                Observation.value.is_not(None),
+               Observation.effective_at >= now - lookback,
                Observation.effective_at <= now)
         .order_by(Observation.effective_at)).all()
     episodes = detect_episodes([Reading(at=at, kind=kind, value=value)
