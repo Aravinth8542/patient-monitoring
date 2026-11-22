@@ -104,3 +104,24 @@ def get_daily_aggregates(
     now: datetime = Depends(get_current_time),
 ):
     return _list_aggregates(patient_id, "daily", staff, db, now, start, end, observation_type, limit)
+
+
+@router.get("/{patient_id}/rollups")
+def get_rollups(
+    patient_id: UUID,
+    metric: str | None = Query(default=None, max_length=50),
+    granularity: str = Query(..., pattern="^(hour|day)$"),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    staff: StaffIdentity = Depends(require_staff_context),
+    db: Session = Depends(get_runtime_db),
+    now: datetime = Depends(get_current_time),
+):
+    """Assignment-compatible rollup endpoint; delegates to audited aggregate reads."""
+    storage_granularity = {"hour": "hourly", "day": "daily"}[granularity]
+    result = _list_aggregates(
+        patient_id, storage_granularity, staff, db, now, start, end, metric, limit
+    )
+    result["granularity"] = granularity
+    return result

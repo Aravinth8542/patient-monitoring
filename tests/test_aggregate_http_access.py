@@ -108,6 +108,16 @@ def test_aggregate_endpoint_clinician_access(db_session, granularity):
             )
             assert denied.status_code == 404
 
+            rollup_path = f"/v1/patients/{assigned_id}/rollups"
+            singular = "hour" if granularity == "hourly" else "day"
+            rollup = client.get(rollup_path, params={"granularity": singular, "metric": "heart_rate"})
+            assert rollup.status_code == 200, rollup.text
+            assert rollup.json()["granularity"] == singular
+            assert rollup.json()["aggregates"] == []
+            assert client.get(rollup_path).status_code == 422
+            assert client.get(rollup_path, params={"granularity": "weekly"}).status_code == 422
+            assert client.get(f"/v1/patients/{unassigned_id}/rollups", params={"granularity": singular}).status_code == 404
+
             app.dependency_overrides[
                 require_staff_context
             ] = lambda: StaffIdentity(
@@ -118,6 +128,8 @@ def test_aggregate_endpoint_clinician_access(db_session, granularity):
 
             forbidden = client.get(path)
             assert forbidden.status_code == 403
+            forbidden_rollup = client.get(rollup_path, params={"granularity": singular})
+            assert forbidden_rollup.status_code == 403
 
     finally:
         app.dependency_overrides.pop(get_runtime_db, None)
