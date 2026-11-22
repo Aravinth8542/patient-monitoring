@@ -1,9 +1,12 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
+    DateTime,
     ForeignKey,
     String,
+    text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -55,4 +58,10 @@ class Patient(Base):
         Boolean,
         nullable=False,
         default=True,
+    )
+    # Monitoring begins at enrollment, independently of the first observation.
+    monitoring_started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
     )
