@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -20,3 +20,6 @@ class Tenant(Base):
         String(150),
         nullable=False
     )
+
+    # None means the built-in default rules; [] deliberately disables all rules.
+    alert_rules: Mapped[list | None] = mapped_column(JSONB, nullable=True)

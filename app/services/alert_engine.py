@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from app.models.alert import Alert
 from app.models.observation import Observation
 from app.models.patient import Patient
-from app.services.alert_rules import Reading, detect_episodes
+from app.models.tenant import Tenant
+from app.services.alert_rules import Reading, detect_episodes, rules_for
 
 
 def evaluate_patient_alerts(db: Session, tenant_id: UUID, patient_id: UUID, now, *, device_context: bool = False) -> int:
@@ -22,15 +23,19 @@ def evaluate_patient_alerts(db: Session, tenant_id: UUID, patient_id: UUID, now,
     if patient is None or not patient.consent_active:
         return 0
 
+    config = db.execute(select(Tenant.alert_rules).where(Tenant.id == tenant_id)).scalar_one()
+    rules = rules_for(config)
+    measurement_rules = [r for r in rules if r['type'] != 'missing_data']
+    metrics = sorted({r['metric'] for r in measurement_rules})
     rows = db.execute(select(Observation.type, Observation.effective_at, Observation.value)
         .where(Observation.tenant_id == tenant_id,
                Observation.patient_id == patient_id,
-               Observation.type.in_(['spo2', 'heart_rate']),
+               Observation.type.in_(metrics),
                Observation.value.is_not(None),
                Observation.effective_at <= now)
         .order_by(Observation.effective_at)).all()
     episodes = detect_episodes([Reading(at=at, kind=kind, value=value)
-                                for kind, at, value in rows])
+                                for kind, at, value in rows], measurement_rules)
     valid_episodes = {(episode.rule, episode.start) for episode in episodes}
     if device_context:
         # Database independently recomputes validity; the device cannot name or retract alerts.
@@ -39,7 +44,7 @@ def evaluate_patient_alerts(db: Session, tenant_id: UUID, patient_id: UUID, now,
     else:
         existing = db.scalars(select(Alert).where(
             Alert.tenant_id == tenant_id, Alert.patient_id == patient_id,
-            Alert.rule.in_(['low_spo2', 'hr_rise']),
+            Alert.rule.in_([r['id'] for r in measurement_rules]),
             Alert.status.in_(['open', 'acknowledged', 'resolved']),
             Alert.episode_start <= now,
         )).all()

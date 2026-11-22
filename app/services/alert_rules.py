@@ -1,11 +1,13 @@
-"""Pure alert-rule detection over effective (not received) observation times.
-
-Input is chronological, normalized measurements for one consenting patient.
-No DB writes or network calls occur in this module.
-"""
+"""Evaluate the three supported alert rule types using tenant configuration."""
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
+
+DEFAULT_RULES = [
+    {"id": "low_spo2", "type": "sustained_threshold", "metric": "spo2", "op": "<", "value": 92, "min_duration_minutes": 10, "min_readings": 3, "max_gap_minutes": 10, "severity": "high"},
+    {"id": "hr_rise", "type": "rate_of_change", "metric": "heart_rate", "op": ">=", "delta": 30, "window_minutes": 15, "severity": "medium"},
+    {"id": "no_data", "type": "missing_data", "window_hours": 24, "severity": "low"},
+]
 
 @dataclass(frozen=True)
 class Reading:
@@ -20,31 +22,74 @@ class Episode:
     start: datetime
 
 
-def detect_episodes(readings: list[Reading]) -> list[Episode]:
+def rules_for(config):
+    """None uses defaults; an explicit [] disables rules for that tenant."""
+    rules = DEFAULT_RULES if config is None else config
+    if not isinstance(rules, list):
+        raise ValueError('alert_rules must be a list')
+    ids = set()
+    for rule in rules:
+        if not isinstance(rule, dict) or not isinstance(rule.get('id'), str) or not 0 < len(rule['id']) <= 40 or rule['id'] in ids:
+            raise ValueError('invalid or repeated alert rule id')
+        ids.add(rule['id'])
+        if rule.get('severity') not in ('low', 'medium', 'high'):
+            raise ValueError('invalid alert severity')
+        kind = rule.get('type')
+        if kind == 'sustained_threshold':
+            if rule.get('metric') not in ('spo2', 'heart_rate', 'body_temp', 'symptom_score') or rule.get('op') not in ('<', '<=', '>', '>='):
+                raise ValueError('invalid sustained rule')
+            Decimal(str(rule['value']))
+            if int(rule['min_duration_minutes']) <= 0 or int(rule['min_readings']) < 2 or int(rule.get('max_gap_minutes',rule['min_duration_minutes'])) <= 0:
+                raise ValueError('invalid sustained duration')
+        elif kind == 'rate_of_change':
+            if rule.get('metric') not in ('spo2', 'heart_rate', 'body_temp', 'symptom_score') or rule.get('op') not in ('>=', '<='):
+                raise ValueError('invalid rate rule')
+            if Decimal(str(rule['delta'])) < 0 or int(rule['window_minutes']) <= 0:
+                raise ValueError('invalid rate window')
+        elif kind == 'missing_data':
+            if int(rule['window_hours']) <= 0:
+                raise ValueError('invalid silence window')
+        else:
+            raise ValueError('unsupported alert rule type')
+    return rules
+
+
+def _compare(value, op, threshold):
+    return {'<': lambda: value < threshold, '<=': lambda: value <= threshold,
+            '>': lambda: value > threshold, '>=': lambda: value >= threshold}[op]()
+
+
+def detect_episodes(readings: list[Reading], rules=None) -> list[Episode]:
     readings = sorted(readings, key=lambda r: r.at)
-    result: list[Episode] = []
-    # Sustained low SpO2: 3+ consecutive low readings spanning >=10 minutes.
-    # A normal reading ends the run; gaps >10m also end it (no evidence of continuity).
-    low: list[Reading] = []
-    for r in (x for x in readings if x.kind == 'spo2'):
-        if r.value >= Decimal('92') or (low and r.at - low[-1].at > timedelta(minutes=10)):
-            low = []
-        if r.value < Decimal('92'):
-            low.append(r)
-            if len(low) >= 3 and r.at - low[0].at >= timedelta(minutes=10):
-                if not result or result[-1].rule != 'low_spo2' or result[-1].start != low[0].at:
-                    # Emit only once for this continuous low run.
-                    if not any(e.rule == 'low_spo2' and e.start == low[0].at for e in result):
-                        result.append(Episode('low_spo2','high',low[0].at))
-    # HR rise: first reading within 15m that is >=30 bpm lower than current.
-    # Avoid emitting a new episode on each subsequent elevated sample.
-    hr = [r for r in readings if r.kind == 'heart_rate']
-    active = False
-    for i, current in enumerate(hr):
-        previous = [r for r in hr[:i] if timedelta(0) < current.at-r.at <= timedelta(minutes=15)]
-        baseline = min(previous, key=lambda r: r.value) if previous else None
-        triggered = baseline is not None and current.value - baseline.value >= Decimal('30')
-        if triggered and not active:
-            result.append(Episode('hr_rise','medium',baseline.at))
-        active = triggered
-    return sorted(result,key=lambda e:(e.start,e.rule))
+    result = []
+    for rule in rules_for(rules):
+        kind = rule['type']
+        if kind == 'missing_data':
+            continue
+        metric_rows = [r for r in readings if r.kind == rule['metric']]
+        if kind == 'sustained_threshold':
+            threshold = Decimal(str(rule['value']))
+            duration = timedelta(minutes=int(rule['min_duration_minutes']))
+            max_gap = timedelta(minutes=int(rule.get('max_gap_minutes', rule['min_duration_minutes'])))
+            run = []
+            for r in metric_rows:
+                if not _compare(r.value, rule['op'], threshold) or (run and r.at-run[-1].at > max_gap):
+                    run = []
+                if _compare(r.value, rule['op'], threshold):
+                    run.append(r)
+                    if len(run) >= int(rule['min_readings']) and r.at-run[0].at >= duration:
+                        episode = Episode(rule['id'], rule['severity'], run[0].at)
+                        if episode not in result:
+                            result.append(episode)
+        elif kind == 'rate_of_change':
+            window = timedelta(minutes=int(rule['window_minutes']))
+            delta = Decimal(str(rule['delta']))
+            active = False
+            for i, current in enumerate(metric_rows):
+                previous = [r for r in metric_rows[:i] if timedelta(0) < current.at-r.at <= window]
+                baseline = (min(previous, key=lambda r:r.value) if rule['op'] == '>=' else max(previous,key=lambda r:r.value)) if previous else None
+                triggered = baseline is not None and _compare(current.value-baseline.value, rule['op'], delta if rule['op']=='>=' else -delta)
+                if triggered and not active:
+                    result.append(Episode(rule['id'], rule['severity'], baseline.at))
+                active = triggered
+    return sorted(result, key=lambda e:(e.start,e.rule))
