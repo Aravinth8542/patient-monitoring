@@ -49,6 +49,7 @@ def evaluate_patient_alerts(db: Session, tenant_id: UUID, patient_id: UUID, now,
             Alert.tenant_id == tenant_id, Alert.patient_id == patient_id,
             Alert.rule.in_([r['id'] for r in measurement_rules]),
             Alert.status.in_(['open', 'acknowledged', 'resolved']),
+            Alert.episode_start >= now - lookback,
             Alert.episode_start <= now,
         )).all()
         for alert in existing:
