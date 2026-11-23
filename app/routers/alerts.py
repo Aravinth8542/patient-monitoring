@@ -22,10 +22,26 @@ def list_patient_alerts(patient_id: UUID, staff: StaffIdentity = Depends(require
     if patient is None:
         raise HTTPException(status_code=404, detail='patient_not_found')
     rows = db.execute(text('''SELECT id,rule,severity,status,episode_start,created_at,
-        acknowledged_at,acknowledged_by,resolved_at,resolved_by FROM alerts
-        WHERE tenant_id=:tenant AND patient_id=:patient ORDER BY episode_start DESC,id DESC'''),
-        {'tenant':staff.tenant_id,'patient':patient_id}).mappings().all()
-    return {'alerts':[dict(row) for row in rows]}
+    acknowledged_at,acknowledged_by,resolved_at,resolved_by,
+    retracted_at,retraction_reason FROM alerts
+    WHERE tenant_id=:tenant AND patient_id=:patient ORDER BY episode_start DESC,id DESC'''),
+    {'tenant':staff.tenant_id,'patient':patient_id}).mappings().all()
+    if db.execute(
+        text("SELECT public.app_staff_assigned(:patient)"),
+        {"patient": patient_id},
+        ).scalar_one():
+        db.execute(
+            text("SELECT public.app_record_staff_audit(:patient, 'patient_alerts_read', :now)"),
+            {"patient": patient_id, "now": now},
+        )
+    else:
+        db.execute(
+            text("SELECT public.app_record_emergency_read(:patient, :now)"),
+            {"patient": patient_id, "now": now},
+        )
+
+    db.commit()
+    return {'alerts': [dict(row) for row in rows]}
 
 def _transition(alert_id: UUID, action: str, staff: StaffIdentity, db: Session, now: datetime):
     if staff.role != 'clinician':
