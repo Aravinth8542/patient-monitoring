@@ -23,6 +23,11 @@ def seed_device(db_session):
 
 
 def test_batch_partial_success(api_client, db_session):
+    """
+    The batch contains a valid 78 bpm heart-rate observation and an invalid symptom score of
+    15. The endpoint must still return HTTP 200 with two item results: accepted for the
+    valid reading and rejected with validation_error for the invalid one.
+    """
     seed_device(db_session)
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
@@ -59,6 +64,12 @@ def test_batch_partial_success(api_client, db_session):
 
 
 def test_batch_with_malformed_items(api_client, db_session):
+    """
+    Submit a valid heart-rate object followed by a string and an integer instead of
+    observation objects. The endpoint must report three per-item results, accepting the
+    first and rejecting both malformed entries with validation_error, rather than failing
+    the entire HTTP request.
+    """
     seed_device(db_session)
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
@@ -94,6 +105,11 @@ def test_batch_with_malformed_items(api_client, db_session):
 
 
 def test_observation_without_timezone_is_rejected(api_client, db_session):
+    """
+    Two heart-rate readings differ only in timestamp validity: 10:00 has no timezone offset,
+    while 10:05 includes +05:30. The first must be rejected and the second accepted within
+    the same batch, avoiding ambiguous event ordering.
+    """
     seed_device(db_session)
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
@@ -129,6 +145,10 @@ def test_observation_without_timezone_is_rejected(api_client, db_session):
 
 
 def test_negative_heart_rate_is_rejected(api_client, db_session):
+    """
+    Submit a heart rate of -20 bpm. The batch request itself is processed, but the
+    impossible physiological value must receive a rejected item status.
+    """
     seed_device(db_session)
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
@@ -153,6 +173,12 @@ def test_negative_heart_rate_is_rejected(api_client, db_session):
 
 
 def test_invalid_spo2_fraction_does_not_reject_batch(api_client, db_session):
+    """
+    The batch includes an invalid fractional SpO2 reading and a separate valid reading. The
+    invalid measurement must be rejected individually while the other reading is still
+    accepted, demonstrating item-level fault isolation. The test specifically verifies
+    partial acceptance rather than HTTP-level rejection.
+    """
     seed_device(db_session)
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
@@ -189,6 +215,10 @@ def test_invalid_spo2_fraction_does_not_reject_batch(api_client, db_session):
 
 
 def test_invalid_blood_pressure_is_rejected(api_client, db_session):
+    """
+    Submit a blood-pressure measurement that violates the accepted value constraints. The
+    API must reject that observation rather than persist invalid clinical data.
+    """
     seed_device(db_session)
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
@@ -225,6 +255,11 @@ def test_invalid_blood_pressure_is_rejected(api_client, db_session):
     assert results[1]["status"] == "accepted"
 
 def test_persist_all_types_and_idempotent_replay(api_client, db_session):
+    """
+    Upload examples of all supported observation types, then retry the same observations.
+    Verify that supported types are persisted once and the replay is reported as duplicate,
+    rather than creating additional database rows.
+    """
     device = seed_device(db_session)
     endpoint = f"/v1/devices/{device.id}/observations:batch"
     now = "2026-11-19T10:00:00+00:00"
@@ -268,6 +303,11 @@ def test_persist_all_types_and_idempotent_replay(api_client, db_session):
 
 
 def test_unknown_device_is_not_accepted(api_client):
+    """
+    Post an ingestion batch to a device ID that does not exist. Even with a request body and
+    authorization header, the endpoint must return 401 rather than accept data for an
+    unregistered device.
+    """
     response = api_client.post(
         "/v1/devices/11111111-1111-4111-8111-111111111111/observations:batch",
         headers={"Authorization": "Bearer test-device-secret", "Idempotency-Key": "unknown"},

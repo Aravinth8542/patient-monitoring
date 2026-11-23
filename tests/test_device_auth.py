@@ -6,6 +6,11 @@ from app.models.device import Device
 
 
 def test_token_generation_is_random_and_hashes():
+    """
+    Generate two device secrets and verify they differ, so provisioning does not reuse
+    credentials. Hashing a token must produce a 64-character digest that does not contain
+    the raw secret, supporting safe storage of token hashes.
+    """
     first, second = generate_device_token(), generate_device_token()
     assert first != second
     assert len(hash_device_token(first)) == 64
@@ -13,6 +18,12 @@ def test_token_generation_is_random_and_hashes():
 
 
 def test_device_auth_rejects_missing_wrong_and_malformed(api_client, db_session):
+    """
+    Upload one valid heart-rate reading to a seeded device using three invalid credential
+    forms: no Authorization header, a wrong Bearer token, and a Basic scheme. All must
+    return 401. The correct Bearer token must return 200, isolating the credential check
+    from payload validity.
+    """
     tenant = Tenant(id=uuid4(), name="Auth Tenant")
     db_session.add(tenant)
     db_session.flush()
@@ -34,6 +45,12 @@ def test_device_auth_rejects_missing_wrong_and_malformed(api_client, db_session)
 
 
 def test_token_cannot_upload_for_other_device(api_client, db_session):
+    """
+    Two devices have different valid token hashes under the same patient. Sending the first
+    device's Bearer token to the second device's ingestion URL must return 401;
+    authentication must bind the token to the URL device, not merely to the tenant or
+    patient.
+    """
     tenant = Tenant(id=uuid4(), name="Auth Scope Tenant")
     db_session.add(tenant)
     db_session.flush()

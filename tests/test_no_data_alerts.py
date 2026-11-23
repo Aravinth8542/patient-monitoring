@@ -26,6 +26,12 @@ def reconcile_arrival(db, tenant, patient, device, effective_minute, received_at
 
 
 def test_no_data_at_24h_once_and_after_new_reading(db_session):
+    """
+    After an SpO2 reading at monitoring start, 23h59m of silence is not overdue; 24h creates
+    one low-severity alert; 25h creates no duplicate. A reading at hour 25 resolves the
+    first episode. At hour 48 the new 24-hour gap is not yet complete; at hour 49 a second
+    alert opens. The database must contain one resolved and one open episode.
+    """
     tenant, patient, device = setup_patient(db_session)
     patient.monitoring_started_at = T
     add_reading(db_session, tenant, patient, device, 0, 'spo2', 97)
@@ -44,6 +50,11 @@ def test_no_data_at_24h_once_and_after_new_reading(db_session):
 
 
 def test_no_data_skips_revoked_and_not_yet_enrolled(db_session):
+    """
+    A patient's monitoring start is four days after the baseline. Evaluating at day three
+    must not create an alert because monitoring has not begun. Even after adding an old
+    reading, revoking consent must keep missing-data evaluation from alerting.
+    """
     tenant, patient, device = setup_patient(db_session)
     patient.monitoring_started_at = T + timedelta(days=4)
     db_session.flush()
@@ -55,6 +66,11 @@ def test_no_data_skips_revoked_and_not_yet_enrolled(db_session):
 
 
 def test_never_observed_patient_becomes_due(db_session):
+    """
+    The patient is enrolled at T but has never sent a reading. Missing-data detection must
+    use enrollment as the silence start: nothing at 23h59m, one open alert at 24h, and no
+    duplicate at 25h. The alert's episode_start must be T.
+    """
     tenant, patient, device = setup_patient(db_session)
     patient.monitoring_started_at = T
     db_session.flush()
@@ -67,6 +83,11 @@ def test_never_observed_patient_becomes_due(db_session):
 
 
 def test_reporting_resumes_resolves_missing_data_alert(db_session):
+    """
+    With no readings, an alert opens exactly 24 hours after monitoring starts. When a
+    reading effective at hour 25 arrives, ingestion reconciliation must resolve the alert at
+    hour 25. Re-running missing-data detection at the same time must not open another alert.
+    """
     tenant, patient, device = setup_patient(db_session)
     patient.monitoring_started_at = T
     db_session.flush()
@@ -80,6 +101,11 @@ def test_reporting_resumes_resolves_missing_data_alert(db_session):
 
 
 def test_no_data_never_observed_uses_tenant_window(db_session):
+    """
+    The tenant configures a 12-hour missing-data rule and the patient has no observations.
+    Evaluation at hour 11 must produce nothing, while hour 12 must produce one alert; the
+    default 24-hour rule must not override tenant configuration.
+    """
     from app.services.alert_rules import DEFAULT_RULES
     tenant, patient, device = setup_patient(db_session)
     tenant.alert_rules = [dict(DEFAULT_RULES[2], window_hours=12)]
@@ -90,6 +116,12 @@ def test_no_data_never_observed_uses_tenant_window(db_session):
 
 
 def test_old_late_reading_does_not_clear_overdue_alert(db_session):
+    """
+    An alert opens after silence from T to hour 24. At hour 48, a late reading timestamped
+    hour 1 arrives. That backfill invalidates the old episode start and retracts the old
+    alert, but the patient has still been silent for 47 hours since hour 1, so a new open
+    alert must be created. A repeat evaluation must create no duplicate.
+    """
     tenant, patient, device = setup_patient(db_session)
     patient.monitoring_started_at = T
     add_reading(db_session, tenant, patient, device, 0, 'spo2', 97)
@@ -105,6 +137,12 @@ def test_old_late_reading_does_not_clear_overdue_alert(db_session):
 
 
 def test_backfill_invalidates_alert_before_it_was_due(db_session):
+    """
+    A never-observed patient receives an alert at hour 24. At hour 25, a late reading
+    effective at hour 23 proves the original 24-hour silence did not occur, so the alert
+    must be retracted with reason late_observation_correction. At hour 47, 24 hours have
+    elapsed since the backfilled reading and a new alert becomes due.
+    """
     tenant, patient, device = setup_patient(db_session)
     patient.monitoring_started_at = T
     db_session.flush()
@@ -120,6 +158,12 @@ def test_backfill_invalidates_alert_before_it_was_due(db_session):
 
 
 def test_out_of_order_backfill_retracts_even_if_latest_effective_unchanged(db_session):
+    """
+    A missing-data alert opens at hour 24. A reading at hour 25 arrives and resolves it;
+    afterward, an older reading effective at hour 23 arrives at hour 26. Although the latest
+    effective timestamp remains hour 25, the older reading disproves the original missing-
+    data episode, so the previously resolved alert must be retracted.
+    """
     tenant, patient, device = setup_patient(db_session)
     patient.monitoring_started_at = T
     db_session.flush()
@@ -134,6 +178,12 @@ def test_out_of_order_backfill_retracts_even_if_latest_effective_unchanged(db_se
 
 
 def test_ingestion_reconciliation_uses_tenant_window(db_session):
+    """
+    A tenant's missing-data window is 12 hours, so an alert opens at hour 12. At hour 13,
+    ingestion backfills a reading effective at hour 11. This means the patient was not
+    actually silent for 12 hours at the alert time; reconciliation must retract the alert
+    using the tenant-specific window.
+    """
     from app.services.alert_rules import DEFAULT_RULES
     tenant, patient, device = setup_patient(db_session)
     tenant.alert_rules = [dict(DEFAULT_RULES[2], window_hours=12)]

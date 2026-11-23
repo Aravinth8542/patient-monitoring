@@ -11,6 +11,12 @@ from app.services.staff_auth import hash_staff_token
 
 
 def test_staff_context_and_append_only_audit(db_session):
+    """
+    After token authorization, the current staff ID matches the clinician. Manually changing
+    app.staff_id to another UUID must invalidate the signed identity rather than impersonate
+    someone else. The controlled audit writer can create an event, but the runtime role
+    cannot read audit rows or issue UPDATE or direct INSERT statements.
+    """
     tenant = Tenant(name='audit-test-' + uuid.uuid4().hex)
     # Persist the parent first: assigning UUIDs alone does not establish
     # ORM dependency ordering for a bulk flush.

@@ -8,6 +8,13 @@ from tests.test_alert_engine import T, setup_patient, add_reading
 
 
 def test_device_runtime_can_create_alert_without_reading_alert_history(db_session):
+    """
+    A device authenticated with its token submits 90% SpO2 readings at minutes 0, 5, and 10.
+    Under the restricted runtime database role, the evaluator must create one alert and
+    avoid duplicates, even though SELECT count(*) on alerts returns zero to that device.
+    After resetting the role, a privileged query confirms that the alert was actually
+    stored.
+    """
     tenant, patient, device = setup_patient(db_session)
     device.token_hash = hash_device_token('alert-test-token')
     for minute in (0, 5, 10):
@@ -25,6 +32,12 @@ def test_device_runtime_can_create_alert_without_reading_alert_history(db_sessio
 
 
 def test_device_runtime_retracts_invalidated_spo2_episode(db_session):
+    """
+    A previously persisted low-SpO2 alert is invalidated by a late 96% reading at minute 7.
+    The restricted device runtime must be able to trigger correction without gaining
+    permission to read alerts. After privileged inspection, the alert must be retracted at
+    minute 12 with reason 'late_observation_correction'.
+    """
     tenant, patient, device = setup_patient(db_session)
     device.token_hash = hash_device_token('retract-test-token')
     for minute in (0, 5, 10):

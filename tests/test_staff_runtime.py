@@ -7,6 +7,12 @@ from app.services.staff_auth import hash_staff_token
 
 
 def test_staff_authentication_establishes_signed_tenant_context(db_session):
+    """
+    Before authentication the restricted runtime sees zero staff users. A wrong token
+    returns no identity; a correct token returns the clinician's staff ID, tenant A and
+    role, making only tenant A visible. Tampering with app.tenant_id to tenant B must
+    invalidate the signed context rather than grant cross-tenant access.
+    """
     tenant_a, tenant_b = uuid.uuid4(), uuid.uuid4()
     db_session.add_all([Tenant(id=tenant_a, name='Staff auth A'), Tenant(id=tenant_b, name='Staff auth B')])
     db_session.flush()

@@ -39,6 +39,11 @@ def add_reading(db, tenant, patient, device, minute, kind, value):
 
 
 def test_persist_low_spo2_episode_once(db_session):
+    """
+    The 91%, 90%, and 91% readings at minutes 0, 5, and 10 meet the sustained-low rule.
+    Evaluation at minute 11 must persist one open high-severity episode starting at minute
+    0; evaluation again at minute 12 must create nothing because it is the same episode.
+    """
     tenant, patient, device = setup_patient(db_session)
     for minute, value in [(0, 91), (5, 90), (10, 91)]:
         add_reading(db_session, tenant, patient, device, minute, 'spo2', value)
@@ -51,6 +56,13 @@ def test_persist_low_spo2_episode_once(db_session):
 
 
 def test_persist_distinct_episodes_and_heart_rate(db_session):
+    """
+    Readings of 91% at minutes 0, 5, and 10 form the first low-SpO2 episode. The 96% reading
+    at minute 11 breaks that sequence, so the 91% readings at minutes 20, 25, and 30 form a
+    second episode. Separately, heart rate rises from 70 to 105 bpm over ten minutes,
+    triggering the rapid-rise rule. The first evaluation therefore creates exactly three
+    alerts, and an identical second evaluation creates zero duplicates.
+    """
     tenant, patient, device = setup_patient(db_session)
     for minute, value in [(0, 91), (5, 91), (10, 91), (11, 96),
                           (20, 91), (25, 91), (30, 91)]:
@@ -63,6 +75,11 @@ def test_persist_distinct_episodes_and_heart_rate(db_session):
 
 
 def test_no_alert_when_consent_revoked(db_session):
+    """
+    Three 90% SpO2 readings over ten minutes would ordinarily qualify for an alert. Setting
+    consent_active to False before evaluation must suppress alert creation even when the
+    physiological rule is satisfied.
+    """
     tenant, patient, device = setup_patient(db_session)
     for minute in (0, 5, 10):
         add_reading(db_session, tenant, patient, device, minute, 'spo2', 90)
@@ -72,6 +89,12 @@ def test_no_alert_when_consent_revoked(db_session):
 
 
 def test_late_normal_reading_breaks_spo2_episode(db_session):
+    """
+    Initially, readings of 91% at minutes 0, 5, and 10 create an alert. A 96% reading
+    arrives later but is timestamped at minute 7, splitting the apparent uninterrupted low
+    sequence. Reevaluation must create no new alert and mark the original alert 'retracted',
+    rather than leaving a clinically misleading episode open.
+    """
     tenant, patient, device = setup_patient(db_session)
     for minute in (0, 5, 10):
         add_reading(db_session, tenant, patient, device, minute, 'spo2', 91)

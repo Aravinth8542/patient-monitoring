@@ -20,6 +20,12 @@ def reading(obs_id, time, value):
 
 
 def test_hourly_aggregate_late_reading_and_duplicate(api_client, db_session):
+    """
+    Upload heart rates 70 at 10:05 and 90 at 10:20, then backfill 80 at 10:10 and resend it.
+    The replay must be marked duplicate. Recompute expected hour buckets from persisted,
+    possibly clock-corrected effective timestamps and compare count, sum, min, max and
+    average against the three distinct readings.
+    """
     device = seed_device(db_session)
     first = reading('h1', '2026-11-19T10:05:00+05:30', 70)
     second = reading('h2', '2026-11-19T10:20:00+05:30', 90)
@@ -51,6 +57,10 @@ def test_hourly_aggregate_late_reading_and_duplicate(api_client, db_session):
 
 
 def test_hourly_aggregate_ignores_rejected_items(api_client, db_session):
+    """
+    Upload a valid 70 bpm reading and an invalid -100 bpm reading in one batch. Only the
+    accepted reading may appear in the hourly rollup, with count one and sum 70.
+    """
     device = seed_device(db_session)
     ok = reading('ok', '2026-11-19T10:05:00+05:30', 70)
     bad = reading('bad', '2026-11-19T10:07:00+05:30', -100)

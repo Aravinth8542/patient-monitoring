@@ -92,6 +92,12 @@ def check_aggregates(db, device, model, granularity):
 def test_mixed_metrics_and_multiple_time_buckets(
     api_client, db_session
 ):
+    """
+    A single batch includes symptom scores 2, 4, 6 and 3 across two hours and two dates,
+    plus temperatures 37 and 38 in the same hour. Every item should be accepted; the shared
+    aggregate checker verifies that hourly and daily buckets are separated by metric and
+    effective timestamp, with correct totals and counts.
+    """
     device = seed_device(db_session)
 
     observations = [
@@ -138,6 +144,12 @@ def test_mixed_metrics_and_multiple_time_buckets(
 def test_late_arrival_and_duplicate_do_not_corrupt_aggregates(
     api_client, db_session
 ):
+    """
+    A symptom score of 2 at 10:20 is uploaded first; a score of 8 timestamped 10:05 arrives
+    later. Both must contribute to the correct historical hour and day. Re-uploading the
+    10:05 event must return 'duplicate', leave aggregate statistics unchanged, and keep
+    exactly two observations.
+    """
     device = seed_device(db_session)
 
     first = reading(
@@ -188,6 +200,12 @@ from app.routers import ingestion
 
 
 def test_batch_refreshes_each_bucket_once(api_client, db_session):
+    """
+    Fifty symptom-score readings are uploaded at the same effective time, with values
+    cycling from 0 through 10. The test intercepts SQL calls to the hourly and daily refresh
+    procedures: despite fifty accepted observations, each affected bucket should be
+    refreshed only once. Aggregate contents are then checked for correctness.
+    """
     device = seed_device(db_session)
 
     observations = [

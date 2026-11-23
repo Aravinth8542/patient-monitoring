@@ -13,6 +13,12 @@ from app.services.staff_auth import hash_staff_token
 NOW = datetime(2026, 11, 20, 10, tzinfo=timezone.utc)
 
 def test_alert_acknowledge_resolve_and_audit(db_session):
+    """
+    An assigned clinician acts on an initially open low-SpO2 alert through the database
+    transition function. Acknowledge changes the status to 'acknowledged'; acknowledging it
+    again is an invalid transition and raises a database error; resolving it then succeeds.
+    Both acknowledged_by and resolved_by must identify that clinician.
+    """
     tenant = Tenant(id=uuid4(), name='lifecycle-' + uuid4().hex)
     db_session.add(tenant); db_session.flush()
     patient = Patient(id=uuid4(), tenant_id=tenant.id, external_id=uuid4().hex, timezone='UTC', consent_active=True)

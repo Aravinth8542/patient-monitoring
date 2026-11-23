@@ -17,6 +17,13 @@ from app.services.staff_auth import hash_staff_token
 
 @pytest.mark.parametrize("granularity", ["hourly", "daily"])
 def test_aggregate_endpoint_clinician_access(db_session, granularity):
+    """
+    The clinician belongs to the assigned patient's care team but not the second patient's.
+    Both the direct hourly/daily endpoint and the rollups alias must return an empty list
+    for a valid patient with no measurements, reject a timezone-less start or limit 501,
+    hide the unassigned patient with 404, and reject an auditor with 403. The rollups
+    endpoint additionally requires a valid 'hour' or 'day' granularity.
+    """
     tenant = Tenant(
         id=uuid.uuid4(),
         name="aggregate-http-" + uuid.uuid4().hex,

@@ -8,6 +8,13 @@ from app.services.staff_auth import hash_staff_token
 
 
 def test_auditor_verifies_chain_and_detects_tampering(db_session):
+    """
+    An auditor writes two events through the controlled audit function, producing a valid
+    linked hash chain. A privileged test operation disables the immutability trigger and
+    rewrites an older action to simulate database tampering. Reverification must fail,
+    demonstrating that the chain detects changes even when database permissions are
+    bypassed.
+    """
     tenant = Tenant(id=uuid.uuid4(), name='chain-' + uuid.uuid4().hex)
     db_session.add(tenant)
     db_session.flush()

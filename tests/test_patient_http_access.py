@@ -12,6 +12,13 @@ from app.services.staff_auth import hash_staff_token
 
 
 def test_patient_http_denies_unassigned_and_auditor(db_session):
+    """
+    Create an assigned and an unassigned patient in the same tenant. Under an authenticated
+    clinician's restricted database role, the unassigned patient must return 404. Switching
+    the endpoint identity to auditor must return 403 even for the assigned patient.
+    Restoring clinician identity must allow the assigned patient's detail request with HTTP
+    200.
+    """
     tenant = Tenant(id=uuid.uuid4(), name='http-authorization-' + uuid.uuid4().hex)
     db_session.add(tenant)
     db_session.flush()
@@ -55,6 +62,11 @@ def test_patient_http_denies_unassigned_and_auditor(db_session):
 
 
 def test_alert_http_reads_are_audited(db_session):
+    """
+    An authorized clinician reads a patient's alerts through HTTP. Beyond returning the
+    data, the request must produce the expected audit event so access to alert history is
+    traceable.
+    """
     tenant_id = uuid.uuid4()
     assigned_id = uuid.uuid4()
     emergency_id = uuid.uuid4()

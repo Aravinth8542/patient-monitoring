@@ -10,6 +10,11 @@ from app.services.device_auth import hash_device_token
 
 
 def test_rls_filters_unscoped_queries_and_blocks_cross_tenant_writes(db_session):
+    """
+    Create records in two tenants and execute SQL as a runtime identity scoped to only one.
+    Even queries without explicit tenant WHERE clauses must not reveal the other tenant's
+    data, and attempts to write across tenant boundaries must be rejected by PostgreSQL RLS.
+    """
     a, b = uuid.uuid4(), uuid.uuid4()
     db_session.add_all([Tenant(id=a, name='RLS A'), Tenant(id=b, name='RLS B')])
     db_session.flush()

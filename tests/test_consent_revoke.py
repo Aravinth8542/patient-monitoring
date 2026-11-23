@@ -11,6 +11,12 @@ from app.services.staff_auth import hash_staff_token
 
 
 def test_revoke_consent_once_and_hide_patient(db_session):
+    """
+    An assigned clinician revokes a patient's consent through the controlled database
+    function. The first call reports a change and the second reports no change, while the
+    patient remains marked inactive. Privileged audit inspection must find exactly one
+    consent_revoked event, avoiding duplicate audit records.
+    """
     tenant_id, patient_id, staff_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     token = 'consent-' + uuid.uuid4().hex
     db_session.add(Tenant(id=tenant_id, name='consent-' + uuid.uuid4().hex))

@@ -18,6 +18,13 @@ from sqlalchemy.exc import IntegrityError
 
 
 def test_save_heart_rate(db_session):
+    """
+    Create a tenant, patient and device, then save an 80 bpm heart-rate event with client ID
+    obs-001. Verify the stored value, links and receipt time. Lookup by device and obs-001
+    must return the same record, whereas obs-999 must not exist. Both identity-comparison
+    helpers must accept the original event, reject a changed value of 95, and treat 80 and
+    80.0 as numerically identical.
+    """
     tenant = Tenant(id=uuid4(), name="Test Hospital")
     db_session.add(tenant)
     db_session.flush()
@@ -108,6 +115,11 @@ def test_save_heart_rate(db_session):
 
 
 def test_duplicate_observation_is_rejected(db_session):
+    """
+    Save the same 80 bpm heart-rate event twice with the same device and client observation
+    ID. The second direct database save must raise IntegrityError, demonstrating the
+    uniqueness constraint protecting device-event identity.
+    """
     tenant = Tenant(id=uuid4(), name="Duplicate Test Hospital")
     db_session.add(tenant)
     db_session.flush()
@@ -147,6 +159,12 @@ def test_duplicate_observation_is_rejected(db_session):
 
 
 def test_savepoint_recovers_from_duplicate(db_session):
+    """
+    Save an 80 bpm event with client ID obs-001 in a nested transaction. Attempt the same
+    event again inside another savepoint and catch its IntegrityError. A new event with ID
+    obs-003 and value 90 must still save successfully, leaving exactly two rows and proving
+    the duplicate failure did not poison the outer transaction.
+    """
     tenant = Tenant(id=uuid4(), name="Savepoint Test Hospital")
     db_session.add(tenant)
     db_session.flush()
@@ -207,6 +225,12 @@ def test_savepoint_recovers_from_duplicate(db_session):
 
 
 def test_process_heart_rate_duplicate(db_session):
+    """
+    Process an 80 bpm heart-rate observation with client ID obs-001 three ways: first
+    submission, identical replay, and replay with value changed to 95. The service must
+    report accepted, duplicate and conflicting_duplicate respectively. Only one database row
+    should remain, with the original value 80.
+    """
     tenant = Tenant(id=uuid4(), name="Process Test Hospital")
     db_session.add(tenant)
     db_session.flush()
@@ -264,6 +288,11 @@ def test_process_heart_rate_duplicate(db_session):
 
 
 def test_save_temperature(db_session):
+    """
+    Save a body-temperature event supplied as 98.6 Fahrenheit. The canonical stored value
+    must be 37.0 Celsius with unit Cel, while original_value and original_unit preserve 98.6
+    and [degF] for traceability.
+    """
     tenant = Tenant(id=uuid4(), name="Temperature Test Hospital")
     db_session.add(tenant)
     db_session.flush()

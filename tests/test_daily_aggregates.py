@@ -20,6 +20,12 @@ def reading(obs_id, time, value):
 
 
 def test_daily_aggregate_late_reading_and_duplicate(api_client, db_session):
+    """
+    Heart rates of 70 at 10:05 and 90 at 00:20 are uploaded, followed by a late 80 at 10:10
+    on the same local date. A replay of the 80 reading is a duplicate. The test reconstructs
+    expected UTC-day buckets from stored effective timestamps, then compares each row's
+    count, sum, min, max, and average against the three unique observations.
+    """
     device = seed_device(db_session)
     first = reading('h1', '2026-11-19T10:05:00+05:30', 70)
     second = reading('h2', '2026-11-19T00:20:00+05:30', 90)
@@ -51,6 +57,11 @@ def test_daily_aggregate_late_reading_and_duplicate(api_client, db_session):
 
 
 def test_daily_aggregate_ignores_rejected_items(api_client, db_session):
+    """
+    A batch contains a valid heart rate of 70 and an invalid heart rate of -100. The API
+    reports accepted and rejected respectively; the daily aggregate must contain one reading
+    with sum 70, never including the rejected value.
+    """
     device = seed_device(db_session)
     ok = reading('ok', '2026-11-19T10:05:00+05:30', 70)
     bad = reading('bad', '2026-11-19T10:07:00+05:30', -100)

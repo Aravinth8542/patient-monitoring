@@ -9,6 +9,12 @@ from app.services.staff_auth import authenticate_staff, hash_staff_token, new_st
 
 
 def test_staff_authentication_and_role(db_session):
+    """
+    Authenticate staff credentials against stored token hashes and verify the returned role.
+    Invalid credentials or inappropriate role usage must not confer access to protected
+    staff operations. The test uses database authorization rather than trusting a role
+    declared by the caller.
+    """
     tenant = Tenant(name="Staff Auth Test")
     db_session.add(tenant)
     db_session.flush()
@@ -27,6 +33,11 @@ def test_staff_authentication_and_role(db_session):
 
 
 def test_cross_tenant_membership_blocked_by_composite_fk(db_session):
+    """
+    Attempt to create a care-team membership joining a staff member and patient from
+    different tenants. The database's composite foreign key must reject the relationship
+    even if individual IDs are otherwise valid.
+    """
     t1, t2 = Tenant(name="Clinic One"), Tenant(name="Clinic Two")
     db_session.add_all([t1, t2])
     db_session.flush()

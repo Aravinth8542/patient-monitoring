@@ -9,6 +9,13 @@ from app.services.staff_auth import hash_staff_token
 
 
 def test_break_glass_temporary_and_audited(db_session):
+    """
+    An authenticated clinician has no care-team assignment, so the patient is initially
+    invisible under RLS. Granting emergency access with a reason temporarily exposes the
+    patient, and recording an emergency read writes a separate audit event. After the test
+    forces the grant to expire, RLS must hide the patient again; exactly one grant and one
+    read audit event must exist.
+    """
     tenant_id, patient_id, clinician_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     token = 'emergency-' + uuid.uuid4().hex
     db_session.add(Tenant(id=tenant_id, name='emergency-' + uuid.uuid4().hex))
@@ -35,6 +42,11 @@ def test_break_glass_temporary_and_audited(db_session):
 
 
 def test_break_glass_rejects_revoked_consent(db_session):
+    """
+    A clinician attempts to grant emergency access to a patient whose consent_active flag is
+    already False. The database function must raise an error, proving break-glass does not
+    override revoked consent.
+    """
     tenant_id, patient_id, staff_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     token = 'revoked-' + uuid.uuid4().hex
     db_session.add(Tenant(id=tenant_id, name='revoked-' + uuid.uuid4().hex))

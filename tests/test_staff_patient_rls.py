@@ -7,6 +7,11 @@ from app.models.staff import StaffUser, CareTeamMembership
 from app.services.staff_auth import hash_staff_token
 
 def test_staff_rls_care_team_and_auditor(db_session):
+    """
+    Under the clinician role, patient visibility must follow explicit care-team assignments
+    rather than merely shared tenancy. Under the auditor role, protected patient and
+    observation rows remain inaccessible even though the staff identity is authenticated.
+    """
     tenant = Tenant(id=uuid.uuid4(), name="staff-rls-" + uuid.uuid4().hex)
     db_session.add(tenant)
     db_session.flush()
