@@ -32,6 +32,18 @@ services:
       - -m
       - scripts.run_container_migrations
 
+  runtime-provision:
+    build: .
+    restart: "no"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      TEST_MODE: "0"
+    command: ["python", "-m", "scripts.provision_test_runtime"]
+
   seed:
     build: .
     restart: "no"
@@ -56,6 +68,8 @@ services:
       migrate:
         condition: service_completed_successfully
       seed:
+        condition: service_completed_successfully
+      runtime-provision:
         condition: service_completed_successfully
     env_file:
       - .env
@@ -85,6 +99,8 @@ services:
       db:
         condition: service_healthy
       migrate:
+        condition: service_completed_successfully
+      runtime-provision:
         condition: service_completed_successfully
     env_file:
       - .env
