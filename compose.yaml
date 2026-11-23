@@ -44,6 +44,35 @@ services:
       TEST_MODE: "0"
     command: ["python", "-m", "scripts.provision_test_runtime"]
 
+  test-db-init:
+    build: .
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+      runtime-provision:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      TEST_MODE: "0"
+    command: ["python", "-m", "scripts.prepare_test_database"]
+
+  pytest:
+    profiles: ["test"]
+    build: .
+    restart: "no"
+    depends_on:
+      test-db-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      TEST_MODE: "0"
+    volumes:
+      - ./tests:/srv/app/tests:ro
+    command: ["python", "-m", "scripts.run_compose_pytest"]
+
   seed:
     build: .
     restart: "no"
@@ -68,6 +97,8 @@ services:
       migrate:
         condition: service_completed_successfully
       seed:
+        condition: service_completed_successfully
+      test-db-init:
         condition: service_completed_successfully
       runtime-provision:
         condition: service_completed_successfully
