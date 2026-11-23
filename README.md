@@ -96,4 +96,18 @@ See [VALIDATION.md](VALIDATION.md) for the reported FHIR validator results and r
 
 **Future-dated observations:** Readings up to five minutes ahead of server time are accepted to accommodate minor device clock skew. These readings immediately contribute to aggregates but are excluded from alert evaluation until their effective timestamps. Delaying aggregation would require additional scheduled recalculation, while rejecting all future readings could discard valid data. The current approach is an intentional trade-off.
 
+### Local Performance Validation
+
+Benchmarks were executed against a Docker Compose deployment on a local development machine.
+
+| Scenario | Observations | Throughput | P95 latency | Result |
+|---|---:|---:|---:|---|
+| Ingestion, 10 concurrent requests | 5,000 | 1,003 observations/s | 612 ms | All accepted |
+| Ingestion, 20 concurrent requests | 10,000 | 991 observations/s | 1,396 ms | All accepted |
+| Reconnect simulation, 10 concurrent requests | 5,000 | 975 observations/s | 567 ms | All accepted; 70 hourly and 10 daily aggregate buckets verified |
+
+**Limitations:** These local benchmarks demonstrate successful ingestion and aggregate consistency at the tested scale, but do not establish compliance with the full production workload. The ingestion p95 target of 300 ms was not achieved.
+
+An initial clinician read-load attempt at 200 concurrent requests resulted in SQLAlchemy connection-pool exhaustion. The clinician p95 target of 500 ms has therefore not been demonstrated. Production-scale clinician concurrency and the full 7.2-million-reading reconnect scenario remain unverified.
+
 The Compose deployment runs a **single API instance**. Concurrent ingestion has been demonstrated, but multi-instance load balancing has **not** been implemented or verified. 

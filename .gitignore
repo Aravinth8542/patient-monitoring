@@ -4,3 +4,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .env
+generated-credentials-*.json
+load-devices.json
+seed_data.txt

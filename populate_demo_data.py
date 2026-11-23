@@ -21,6 +21,9 @@ OBSERVATIONS_PER_DEVICE = 100
 BATCH_SIZE = 50
 CONCURRENCY = 10
 DUPLICATE_RETRY_PERCENTAGE = 10  # 0 disables retries; 100 retries every batch
+LATE_DATA_PERCENTAGE = 10  # readings recorded 6 hours before upload
+OUT_OF_ORDER_PERCENTAGE = 10  # percentage of batches sent in shuffled time order
+LATE_HOURS = 6
 API_URL = "http://127.0.0.1:8000"
 # =======================================================
 
@@ -85,6 +88,12 @@ def validate():
         sys.exit('All numeric settings must be positive integers.')
     if not isinstance(DUPLICATE_RETRY_PERCENTAGE, int) or isinstance(DUPLICATE_RETRY_PERCENTAGE, bool) or not 0 <= DUPLICATE_RETRY_PERCENTAGE <= 100:
         sys.exit('DUPLICATE_RETRY_PERCENTAGE must be an integer between 0 and 100.')
+    for name, value in [('LATE_DATA_PERCENTAGE', LATE_DATA_PERCENTAGE),
+                        ('OUT_OF_ORDER_PERCENTAGE', OUT_OF_ORDER_PERCENTAGE)]:
+        if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 100:
+            sys.exit(f'{name} must be an integer between 0 and 100.')
+    if not isinstance(LATE_HOURS, int) or isinstance(LATE_HOURS, bool) or LATE_HOURS < 1:
+        sys.exit('LATE_HOURS must be a positive integer.')
     if CARE_TEAM not in ('round_robin', 'all'):
         sys.exit("CARE_TEAM must be 'round_robin' or 'all'.")
     if API_URL.rstrip('/') not in ('http://127.0.0.1:8000', 'http://localhost:8000'):
@@ -107,7 +116,12 @@ def provision():
         sys.exit('Could not read provisioning result:\n' + result.stdout)
 
 
-def observation(device_id, index, now):
+def selected(index, percentage):
+    """Deterministically select approximately percentage of items (0-99 cycle)."""
+    return (index * percentage) // 100 != ((index + 1) * percentage) // 100
+
+
+def observation(device_id, index, now, late=False):
     # Rotate through realistic valid readings, including occasional low SpO2.
     metrics = [
         ('heart_rate', 72 + (index % 25), '/min'),
@@ -116,8 +130,11 @@ def observation(device_id, index, now):
         ('symptom_score', 2, None),
     ]
     metric, value, unit = metrics[index % len(metrics)]
+    recorded_at = now - timedelta(minutes=index)
+    if late:
+        recorded_at -= timedelta(hours=LATE_HOURS)
     item = {'client_obs_id': f'generated-{uuid.uuid4().hex}', 'type': metric,
-            'value': value, 'effective_at': (now - timedelta(minutes=index)).isoformat()}
+            'value': value, 'effective_at': recorded_at.isoformat()}
     if unit is not None:
         item['unit'] = unit
     return item
@@ -130,9 +147,13 @@ async def upload(devices):
     async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
         request_log = []
 
-        async def send(device, start, retry_duplicate):
-            items = [observation(device['device_id'], i, now)
+        async def send(device, start, retry_duplicate, shuffle_batch, device_number):
+            items = [observation(device['device_id'], i, now,
+                                 late=selected(device_number * OBSERVATIONS_PER_DEVICE + i, LATE_DATA_PERCENTAGE))
                      for i in range(start, min(start + BATCH_SIZE, OBSERVATIONS_PER_DEVICE))]
+            if shuffle_batch and len(items) > 2:
+                # Deliberately mix recorded timestamps within the same API batch.
+                items = items[::2] + items[1::2]
             key = 'generated-' + uuid.uuid4().hex
             payload = {'batch_id': key, 'sent_at_device': now.isoformat(), 'observations': items}
             headers = {'Authorization': 'Bearer ' + device['token'], 'Idempotency-Key': key}
@@ -163,11 +184,11 @@ async def upload(devices):
                     return accepted, len(items) - accepted, retried, error
                 except httpx.RequestError as exc:
                     return 0, len(items), 0, str(exc)
-        batches = [(device, start) for device in devices
+        batches = [(device, start, device_number) for device_number, device in enumerate(devices)
                    for start in range(0, OBSERVATIONS_PER_DEVICE, BATCH_SIZE)]
-        tasks = [send(device, start, (index * DUPLICATE_RETRY_PERCENTAGE) // 100 !=
-                      ((index + 1) * DUPLICATE_RETRY_PERCENTAGE) // 100)
-                 for index, (device, start) in enumerate(batches)]
+        tasks = [send(device, start, selected(index, DUPLICATE_RETRY_PERCENTAGE),
+                      selected(index, OUT_OF_ORDER_PERCENTAGE), device_number)
+                 for index, (device, start, device_number) in enumerate(batches)]
         results = await asyncio.gather(*tasks)
     return (sum(x[0] for x in results), sum(x[1] for x in results),
             sum(x[2] for x in results), [x[3] for x in results if x[3]], request_log)
@@ -193,7 +214,12 @@ def main():
     print(f"Created tenant {credentials['tenant_id']}")
     print(f"Credentials saved to {path.name} (PRIVATE: do not commit)")
     expected = len(credentials['devices']) * OBSERVATIONS_PER_DEVICE
+    late_count = sum(selected(i, LATE_DATA_PERCENTAGE) for i in range(expected))
+    batch_count = len(credentials['devices']) * ((OBSERVATIONS_PER_DEVICE + BATCH_SIZE - 1) // BATCH_SIZE)
+    shuffled_count = sum(selected(i, OUT_OF_ORDER_PERCENTAGE) for i in range(batch_count))
     print(f'Uploading {expected:,} observations through the API...', flush=True)
+    print(f'  Late readings (recorded {LATE_HOURS} hours earlier): {late_count:,}')
+    print(f'  Intentionally reordered batches: {shuffled_count:,}')
     accepted, rejected, replayed, errors, request_log = asyncio.run(upload(credentials['devices']))
     print(f'Accepted (new): {accepted:,}; not accepted: {rejected:,}')
     print(f'Duplicate observations replayed: {replayed:,} (not counted as new)')
