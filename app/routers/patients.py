@@ -42,7 +42,7 @@ def read_assigned_patient(
     db.commit()  # Audit must be durable before returning protected patient information.
     return {"id":row.id, "timezone":row.timezone, "consent_active":row.consent_active}
 
-@router.post("/{patient_id}/consent:revoke")
+@router.post("/{patient_id}/consent/revoke")
 def revoke_patient_consent(
     patient_id: UUID,
     staff: StaffIdentity = Depends(require_staff_context),
