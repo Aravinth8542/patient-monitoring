@@ -10,6 +10,7 @@ from sqlalchemy import and_, or_, select, text, func
 from sqlalchemy.orm import Session
 
 from app.clock import get_current_time
+from app.config import settings
 from app.database import get_runtime_db
 from app.models.observation import Observation
 from app.security.staff_context import StaffIdentity, require_staff_context
@@ -94,22 +95,28 @@ def search_observations(
             raise HTTPException(422, "cursor_query_mismatch")
         try:
             snapshot = datetime.fromisoformat(state["snapshot"])
+            inserted_snapshot = datetime.fromisoformat(state["inserted_snapshot"])
             last_time = datetime.fromisoformat(state["last_time"])
             last_id = UUID(state["last_id"])
-            if snapshot.tzinfo is None or last_time.tzinfo is None:
+            if snapshot.tzinfo is None or inserted_snapshot.tzinfo is None or last_time.tzinfo is None:
                 raise ValueError()
         except (ValueError, KeyError, TypeError):
             raise HTTPException(422, "invalid_fhir_cursor") from None
     else:
-        # DB time, not client-supplied X-Test-Now, is the visibility watermark.
-        # New uploads after page 1 cannot enter subsequent pages.
-        snapshot = db.execute(text("SELECT statement_timestamp()")).scalar_one()
+        # Production uses database time for a stable receipt-time watermark.
+        # During replay, receipt timestamps may be simulated in the future;
+        # include observations received by the requested test time.
+        db_snapshot, inserted_snapshot = db.execute(
+            text("SELECT statement_timestamp(), clock_timestamp()")
+        ).one()
+        snapshot = max(db_snapshot, now) if settings.test_mode else db_snapshot
         last_time = last_id = None
 
     filters = [
         Observation.tenant_id == staff.tenant_id,
         Observation.patient_id == patient,
         Observation.received_at <= snapshot,
+        Observation.inserted_at <= inserted_snapshot,
     ]
     if code:
         filters.append(Observation.type == CODE_TO_KIND[code])
@@ -136,6 +143,7 @@ def search_observations(
         last = page[-1]
         next_state = {
             "v": 1, "q": signature, "snapshot": snapshot.isoformat(),
+            "inserted_snapshot": inserted_snapshot.isoformat(),
             "last_time": last.effective_at.isoformat(), "last_id": str(last.id),
         }
         # Use the incoming request's URL and preserve all filters.
