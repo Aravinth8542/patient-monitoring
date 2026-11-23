@@ -1,0 +1,7 @@
+services:
+  api2:
+    extends:
+      service: api
+      file: compose.yaml
+    ports: !override
+      - "127.0.0.1:8001:8000"

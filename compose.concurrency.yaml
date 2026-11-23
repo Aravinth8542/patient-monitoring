@@ -1,0 +1,22 @@
+# Test-only extension of compose.yaml. Use -p pm_concurrency to isolate volumes.
+services:
+  db:
+    ports: !override
+      - "127.0.0.1:5434:5432"
+
+  api:
+    depends_on:
+      runtime-provision:
+        condition: service_completed_successfully
+    ports: !override
+      - "127.0.0.1:8010:8000"
+
+  api2:
+    extends:
+      service: api
+      file: compose.yaml
+    depends_on:
+      runtime-provision:
+        condition: service_completed_successfully
+    ports: !override
+      - "127.0.0.1:8011:8000"
