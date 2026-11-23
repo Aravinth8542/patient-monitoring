@@ -1,4 +1,4 @@
-"""Scheduled missing-data detection and recovery; caller commits the transaction."""
+"""Scheduled missing-data detection; caller commits the transaction."""
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from sqlalchemy import select, func
@@ -15,9 +15,8 @@ def evaluate_no_data_alerts(db: Session, now: datetime) -> int:
     """Evaluate every consenting patient, including those without observations.
 
     A missing-data episode starts at the last observation's effective time, or
-    monitoring start if none exists. Late backfills correct obsolete episodes;
-    genuine reporting recovery resolves the previous episode. Historical alerts
-    remain available, and subsequent silence creates a distinct episode.
+    monitoring start if none exists. Ingestion reconciles existing episodes;
+    this job only detects missing-data episodes.
     """
     if now.tzinfo is None or now.utcoffset() is None:
         raise ValueError('now must be timezone-aware')
@@ -46,23 +45,6 @@ def evaluate_no_data_alerts(db: Session, now: datetime) -> int:
                 continue
             window = timedelta(hours=int(rule['window_hours']))
             overdue = baseline <= now - window
-            old_alerts = db.scalars(select(Alert).where(
-                Alert.tenant_id == tenant_id, Alert.patient_id == patient_id,
-                Alert.rule == rule['id'], Alert.status.in_(['open', 'acknowledged']),
-                Alert.episode_start < baseline,
-            )).all()
-            for alert in old_alerts:
-                if overdue or (alert.created_at - window < baseline <= alert.created_at):
-                    # The old episode start was invalidated by a backfilled
-                    # reading. If still overdue, a new episode is due below.
-                    alert.status = 'retracted'
-                    alert.retracted_at = now
-                    alert.retraction_reason = 'late_observation_correction'
-                else:
-                    # Reporting resumed after the original alert became due.
-                    alert.status = 'resolved'
-                    alert.resolved_at = now
-                    # resolved_by=None denotes an automatic system transition.
             if not overdue:
                 continue
             statement = insert(Alert).values(

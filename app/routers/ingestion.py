@@ -185,6 +185,10 @@ def ingest_observations(
         request_hash=fingerprint, response_body=response, status_code=200,
         created_at=received_at,
     ))
+    # Reconcile missing-data alerts for every accepted observation type.
+    if accepted_ids:
+        db.execute(text("SELECT public.app_reconcile_device_no_data(:tenant, :patient, :now)"),
+                   {"tenant": device.tenant_id, "patient": device.patient_id, "now": received_at})
     # Evaluate after accepted readings are flushed, in the same transaction.
     # Any alert-write failure rolls back the batch rather than silently losing alerts.
     if needs_alert_check:
