@@ -1,0 +1,254 @@
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "link": [
+    {
+      "relation": "self",
+      "url": "http://localhost/fhir/Observation?patient=synthetic"
+    }
+  ],
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:997453aa-079a-5dae-b0f1-facb73ac7c9d",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "997453aa-079a-5dae-b0f1-facb73ac7c9d",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "8867-4",
+              "display": "Heart rate"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "Patient/53027250-b822-5ebe-a92c-83cc9324a336"
+        },
+        "effectiveDateTime": "2026-11-20T10:00:00+00:00",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "vital-signs",
+                "display": "Vital Signs"
+              }
+            ]
+          }
+        ],
+        "valueQuantity": {
+          "value": 94.0,
+          "unit": "beats/minute",
+          "system": "http://unitsofmeasure.org",
+          "code": "/min"
+        }
+      },
+      "search": {
+        "mode": "match"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:4ed23623-edb0-5876-98fe-31ec8a50ab1b",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "4ed23623-edb0-5876-98fe-31ec8a50ab1b",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "2708-6",
+              "display": "Oxygen saturation in Arterial blood"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "Patient/53027250-b822-5ebe-a92c-83cc9324a336"
+        },
+        "effectiveDateTime": "2026-11-20T10:00:00+00:00",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "vital-signs",
+                "display": "Vital Signs"
+              }
+            ]
+          }
+        ],
+        "valueQuantity": {
+          "value": 94.0,
+          "unit": "%",
+          "system": "http://unitsofmeasure.org",
+          "code": "%"
+        }
+      },
+      "search": {
+        "mode": "match"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:a0b0def3-0bbc-5e53-9f16-9e1300f9b6d7",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "a0b0def3-0bbc-5e53-9f16-9e1300f9b6d7",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "85354-9",
+              "display": "Blood pressure panel with all children optional"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "Patient/53027250-b822-5ebe-a92c-83cc9324a336"
+        },
+        "effectiveDateTime": "2026-11-20T10:00:00+00:00",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "vital-signs",
+                "display": "Vital Signs"
+              }
+            ]
+          }
+        ],
+        "component": [
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "8480-6",
+                  "display": "Systolic blood pressure"
+                }
+              ]
+            },
+            "valueQuantity": {
+              "value": 120.0,
+              "unit": "mmHg",
+              "system": "http://unitsofmeasure.org",
+              "code": "mm[Hg]"
+            }
+          },
+          {
+            "code": {
+              "coding": [
+                {
+                  "system": "http://loinc.org",
+                  "code": "8462-4",
+                  "display": "Diastolic blood pressure"
+                }
+              ]
+            },
+            "valueQuantity": {
+              "value": 80.0,
+              "unit": "mmHg",
+              "system": "http://unitsofmeasure.org",
+              "code": "mm[Hg]"
+            }
+          }
+        ]
+      },
+      "search": {
+        "mode": "match"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:bd82d043-bfcc-59be-a543-105269fab854",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "bd82d043-bfcc-59be-a543-105269fab854",
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "system": "http://loinc.org",
+              "code": "8310-5",
+              "display": "Body temperature"
+            }
+          ]
+        },
+        "subject": {
+          "reference": "Patient/53027250-b822-5ebe-a92c-83cc9324a336"
+        },
+        "effectiveDateTime": "2026-11-20T10:00:00+00:00",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "vital-signs",
+                "display": "Vital Signs"
+              }
+            ]
+          }
+        ],
+        "valueQuantity": {
+          "value": 94.0,
+          "unit": "\u00b0C",
+          "system": "http://unitsofmeasure.org",
+          "code": "Cel"
+        }
+      },
+      "search": {
+        "mode": "match"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:2fdb0791-1d03-5b52-ad5a-00ece993d533",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "2fdb0791-1d03-5b52-ad5a-00ece993d533",
+        "status": "final",
+        "code": {
+          "text": "Patient-reported symptom score (local concept: symptom-score)"
+        },
+        "subject": {
+          "reference": "Patient/53027250-b822-5ebe-a92c-83cc9324a336"
+        },
+        "effectiveDateTime": "2026-11-20T10:00:00+00:00",
+        "valueQuantity": {
+          "value": 94.0,
+          "unit": "score",
+          "system": "http://unitsofmeasure.org",
+          "code": "1"
+        }
+      },
+      "search": {
+        "mode": "match"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:10c20f36-8847-509c-b640-aa0a3b0e6169",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "10c20f36-8847-509c-b640-aa0a3b0e6169",
+        "status": "final",
+        "code": {
+          "text": "Patient-reported medication taken (local concept: medication-taken)"
+        },
+        "subject": {
+          "reference": "Patient/53027250-b822-5ebe-a92c-83cc9324a336"
+        },
+        "effectiveDateTime": "2026-11-20T10:00:00+00:00",
+        "valueBoolean": true,
+        "note": [
+          {
+            "text": "Medication reference: synthetic-med"
+          }
+        ]
+      },
+      "search": {
+        "mode": "match"
+      }
+    }
+  ]
+}

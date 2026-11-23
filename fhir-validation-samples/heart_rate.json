@@ -1,0 +1,35 @@
+{
+  "resourceType": "Observation",
+  "id": "997453aa-079a-5dae-b0f1-facb73ac7c9d",
+  "status": "final",
+  "code": {
+    "coding": [
+      {
+        "system": "http://loinc.org",
+        "code": "8867-4",
+        "display": "Heart rate"
+      }
+    ]
+  },
+  "subject": {
+    "reference": "Patient/53027250-b822-5ebe-a92c-83cc9324a336"
+  },
+  "effectiveDateTime": "2026-11-20T10:00:00+00:00",
+  "category": [
+    {
+      "coding": [
+        {
+          "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+          "code": "vital-signs",
+          "display": "Vital Signs"
+        }
+      ]
+    }
+  ],
+  "valueQuantity": {
+    "value": 94.0,
+    "unit": "beats/minute",
+    "system": "http://unitsofmeasure.org",
+    "code": "/min"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "resourceType": "Observation",
+  "id": "2fdb0791-1d03-5b52-ad5a-00ece993d533",
+  "status": "final",
+  "code": {
+    "text": "Patient-reported symptom score (local concept: symptom-score)"
+  },
+  "subject": {
+    "reference": "Patient/53027250-b822-5ebe-a92c-83cc9324a336"
+  },
+  "effectiveDateTime": "2026-11-20T10:00:00+00:00",
+  "valueQuantity": {
+    "value": 94.0,
+    "unit": "score",
+    "system": "http://unitsofmeasure.org",
+    "code": "1"
+  }
+}

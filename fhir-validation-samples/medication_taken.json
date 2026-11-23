@@ -1,0 +1,18 @@
+{
+  "resourceType": "Observation",
+  "id": "10c20f36-8847-509c-b640-aa0a3b0e6169",
+  "status": "final",
+  "code": {
+    "text": "Patient-reported medication taken (local concept: medication-taken)"
+  },
+  "subject": {
+    "reference": "Patient/53027250-b822-5ebe-a92c-83cc9324a336"
+  },
+  "effectiveDateTime": "2026-11-20T10:00:00+00:00",
+  "valueBoolean": true,
+  "note": [
+    {
+      "text": "Medication reference: synthetic-med"
+    }
+  ]
+}
