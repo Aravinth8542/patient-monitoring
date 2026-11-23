@@ -10,7 +10,8 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     Boolean,
-    Integer
+    Integer,
+    func
 )
 
 from decimal import Decimal
@@ -136,6 +137,13 @@ class Observation(Base):
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
+    )
+
+    # Database clock, independent of TEST_MODE and device-supplied timestamps.
+    inserted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.clock_timestamp(),
     )
 
     clock_skew_flagged: Mapped[bool] = mapped_column(

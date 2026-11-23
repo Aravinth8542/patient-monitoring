@@ -1,6 +1,6 @@
 """Scheduled missing-data detection; caller commits the transaction."""
 from datetime import datetime, timedelta, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 from sqlalchemy import select, func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -11,7 +11,8 @@ from app.models.tenant import Tenant
 from app.services.alert_rules import rules_for
 
 
-def evaluate_no_data_alerts(db: Session, now: datetime) -> int:
+def evaluate_no_data_alerts(db: Session, now: datetime, *,
+                            tenant_id: UUID | None = None, patient_id: UUID | None = None) -> int:
     """Evaluate every consenting patient, including those without observations.
 
     A missing-data episode starts at the last observation's effective time, or
@@ -27,14 +28,19 @@ def evaluate_no_data_alerts(db: Session, now: datetime) -> int:
         func.max(Observation.effective_at).label('last_at'),
     ).where(Observation.effective_at <= now, Observation.received_at <= now)
      .group_by(Observation.tenant_id, Observation.patient_id).subquery())
-    patients = db.execute(
-        select(Patient.tenant_id, Patient.id, Patient.monitoring_started_at,
+    if patient_id is not None and tenant_id is None:
+        raise ValueError("patient_id requires tenant_id")
+    query = (select(Patient.tenant_id, Patient.id, Patient.monitoring_started_at,
                last_reading.c.last_at, Tenant.alert_rules)
         .join(Tenant, Tenant.id == Patient.tenant_id)
         .outerjoin(last_reading, (last_reading.c.tenant_id == Patient.tenant_id) &
                              (last_reading.c.patient_id == Patient.id))
-        .where(Patient.consent_active.is_(True), Patient.monitoring_started_at <= now)
-    ).all()
+        .where(Patient.consent_active.is_(True), Patient.monitoring_started_at <= now))
+    if tenant_id is not None:
+        query = query.where(Patient.tenant_id == tenant_id)
+    if patient_id is not None:
+        query = query.where(Patient.id == patient_id)
+    patients = db.execute(query).all()
     inserted = 0
     for tenant_id, patient_id, started_at, last_at, config in patients:
         # An observation recorded before enrollment must not move the baseline

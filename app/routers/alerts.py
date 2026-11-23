@@ -1,19 +1,21 @@
 """Clinician alert listing and audited lifecycle transitions."""
 from datetime import datetime
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 from app.clock import get_current_time
 from app.database import get_runtime_db
 from app.security.staff_context import StaffIdentity, require_staff_context
+from app.services.test_mode_no_data import evaluate_replay_no_data
 
 router = APIRouter(prefix='/v1', tags=['Alerts'])
 
 @router.get('/patients/{patient_id}/alerts')
 def list_patient_alerts(patient_id: UUID, staff: StaffIdentity = Depends(require_staff_context),
-                        db: Session = Depends(get_runtime_db), now: datetime = Depends(get_current_time)):
+                        db: Session = Depends(get_runtime_db), now: datetime = Depends(get_current_time),
+                        x_test_now: str | None = Header(default=None, alias="X-Test-Now")):
     if staff.role != 'clinician':
         raise HTTPException(status_code=403, detail='clinician_role_required')
     patient = db.execute(text('''SELECT 1 FROM patients WHERE id=:patient AND tenant_id=:tenant
@@ -21,6 +23,7 @@ def list_patient_alerts(patient_id: UUID, staff: StaffIdentity = Depends(require
         {'patient':patient_id,'tenant':staff.tenant_id}).scalar_one_or_none()
     if patient is None:
         raise HTTPException(status_code=404, detail='patient_not_found')
+    evaluate_replay_no_data(now, x_test_now is not None, staff.tenant_id, patient_id)
     rows = db.execute(text('''SELECT id,rule,severity,status,episode_start,created_at,
     acknowledged_at,acknowledged_by,resolved_at,resolved_by,
     retracted_at,retraction_reason FROM alerts
