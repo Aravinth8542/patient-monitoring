@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, ForeignKeyConstraint, Index, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKeyConstraint, Index, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
@@ -9,7 +9,7 @@ class Alert(Base):
     __tablename__ = 'alerts'
     __table_args__ = (
         ForeignKeyConstraint(['tenant_id','patient_id'], ['patients.tenant_id','patients.id']),
-        UniqueConstraint('tenant_id','patient_id','rule','episode_start', name='uq_alert_episode'),
+        Index('uq_alert_episode', 'tenant_id','patient_id','rule','episode_start', unique=True, postgresql_where=text("status IN ('open','acknowledged','resolved')")),
         UniqueConstraint('tenant_id','patient_id','id', name='uq_alert_patient_id'),
         ForeignKeyConstraint(['tenant_id','patient_id','superseded_by_id'], ['alerts.tenant_id','alerts.patient_id','alerts.id'], name='fk_alert_superseded'),
         Index('ix_alert_patient_rule', 'tenant_id','patient_id','rule'),
@@ -35,3 +35,5 @@ class Alert(Base):
     qualified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_retrospective: Mapped[bool | None] = mapped_column(Boolean)
     superseded_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+    last_observation_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -41,6 +41,7 @@ class Observation(Base):
             "patient_id",
             "effective_at",
         ),
+        Index("ix_observation_patient_metric_time_id", "tenant_id", "patient_id", "type", "effective_at", "id"),
         CheckConstraint(
             "type IN ("
             "'heart_rate', "
