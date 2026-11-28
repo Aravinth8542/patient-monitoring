@@ -21,7 +21,12 @@ def main():
             cur.execute(sql.SQL("ALTER ROLE patient_monitoring_runtime LOGIN PASSWORD {}").format(
                 sql.Literal(runtime.password)
             ))
-    print("Compose runtime role configured")
+            if os.environ.get("ALERT_DATABASE_URL"):
+                alert = make_url(docker_database_url("ALERT_DATABASE_URL"))
+                if alert.database != owner.database or alert.username != "patient_monitoring_alert_processor" or not alert.password:
+                    raise RuntimeError("Invalid ALERT_DATABASE_URL")
+                cur.execute(sql.SQL("ALTER ROLE patient_monitoring_alert_processor LOGIN PASSWORD {}").format(sql.Literal(alert.password)))
+    print("Compose runtime roles configured")
 
 
 if __name__ == "__main__":

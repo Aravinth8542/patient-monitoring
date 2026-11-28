@@ -18,6 +18,7 @@ from app.models.patient import Patient
 from app.models.ingestion_request import IngestionRequest
 from app.schemas.observation import BatchInput, ObservationPayload
 from app.services.observation_service import process_observation
+from app.services.patient_lock import lock_patient
 from app.services.clock_skew import estimate_device_offset
 from app.services.alert_engine import evaluate_patient_alerts
 from app.services.device_auth import authenticate_device
@@ -82,6 +83,13 @@ def ingest_observations(
         if previous.request_hash != fingerprint:
             raise HTTPException(status_code=409, detail="idempotency_key_reused_with_different_payload")
         return previous.response_body
+
+    # Serialize all new uploads for this patient, across devices and API instances.
+    # Lock order: idempotency key, patient, aggregate buckets.
+    lock_patient(db, device.tenant_id, device.patient_id)
+    db.refresh(patient)
+    if not patient.consent_active:
+        raise HTTPException(status_code=403, detail="consent_inactive")
 
     results = []
     needs_alert_check = False

@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     database_url: str
     test_database_url: str | None = None
     test_mode: bool = False
+    alert_database_url: str | None = None
     runtime_database_url: str | None = None
 
     model_config = SettingsConfigDict(

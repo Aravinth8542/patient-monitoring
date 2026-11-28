@@ -10,3 +10,5 @@ from app.models.alert import Alert
 from app.models.hourly_aggregate import HourlyAggregate
 
 from app.models.daily_aggregate import DailyAggregate
+
+from app.models.pending_alert_evaluation import PendingAlertEvaluation

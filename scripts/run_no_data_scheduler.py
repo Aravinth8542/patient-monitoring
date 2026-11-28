@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 def main():
     os.environ["DATABASE_URL"] = docker_database_url("DATABASE_URL")
+    if os.environ.get("ALERT_DATABASE_URL"):
+        os.environ["ALERT_DATABASE_URL"] = docker_database_url("ALERT_DATABASE_URL")
 
     from app.jobs.no_data import main as evaluate
 

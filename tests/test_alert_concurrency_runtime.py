@@ -19,7 +19,7 @@ from tests.test_alert_engine import setup_patient
 
 
 def test_concurrent_cross_midnight_uploads_create_one_alert(monkeypatch):
-    """Both evaluations finish before either commit; together readings qualify."""
+    """Concurrent uploads contend for the patient lock; together readings qualify."""
     for url in (settings.database_url, settings.test_database_url,
                 settings.runtime_database_url):
         assert url and make_url(url).database == 'patient_monitoring_test'
@@ -31,16 +31,16 @@ def test_concurrent_cross_midnight_uploads_create_one_alert(monkeypatch):
     now = datetime(2026, 11, 28, 0, 1, tzinfo=timezone.utc)
     start = now - timedelta(minutes=11)
     barrier = Barrier(2, timeout=15)
-    original = ingestion.evaluate_patient_alerts
+    original = ingestion.lock_patient
     monkeypatch.setattr(settings, 'test_mode', True)
 
-    def synchronized_evaluation(db, tenant_id, patient_id, now, **kwargs):
+    def synchronized_lock(db, tenant_id, patient_id):
         assert db.execute(text('SELECT current_user')).scalar_one() == 'patient_monitoring_runtime'
-        result = original(db, tenant_id, patient_id, now, **kwargs)
+        # Both requests reach the lock before either is allowed to acquire it.
         barrier.wait()
-        return result
+        return original(db, tenant_id, patient_id)
 
-    monkeypatch.setattr(ingestion, 'evaluate_patient_alerts', synchronized_evaluation)
+    monkeypatch.setattr(ingestion, 'lock_patient', synchronized_lock)
     tenant_id = patient_id = device_id = None
     try:
         with Session(owner) as db:

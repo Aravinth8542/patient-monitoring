@@ -15,6 +15,8 @@ def main():
     os.environ["TEST_DATABASE_URL"] = os.environ["DATABASE_URL"]
     runtime = make_url(docker_database_url("RUNTIME_DATABASE_URL")).set(database=TEST_DB)
     os.environ["RUNTIME_DATABASE_URL"] = runtime.render_as_string(hide_password=False)
+    if os.environ.get("ALERT_DATABASE_URL"):
+        os.environ["ALERT_DATABASE_URL"] = make_url(docker_database_url("ALERT_DATABASE_URL")).set(database=TEST_DB).render_as_string(hide_password=False)
     os.environ["TEST_MODE"] = "0"
     subprocess.run(["python", "-m", "pytest", "-q", "tests"], check=True)
 

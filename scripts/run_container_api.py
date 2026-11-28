@@ -15,6 +15,8 @@ def docker_database_url(name: str) -> str:
 
 def main() -> None:
     os.environ["DATABASE_URL"] = docker_database_url("DATABASE_URL")
+    if os.environ.get("ALERT_DATABASE_URL"):
+        os.environ["ALERT_DATABASE_URL"] = docker_database_url("ALERT_DATABASE_URL")
     os.environ["RUNTIME_DATABASE_URL"] = docker_database_url("RUNTIME_DATABASE_URL")
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000)
